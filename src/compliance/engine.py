@@ -17,7 +17,22 @@ import compliance.rules  # noqa: F401
 from compliance.models import Portfolio, Severity
 from compliance.report import ComplianceReport
 from compliance.rules.base import Finding, Rule, RuleResult, create_rule
+from compliance.validation import reject_unknown_keys
 from compliance.waivers import Waiver, apply_waivers, as_of_date
+
+#: Recognised top-level keys of a guideline document. ``metadata`` is a
+#: free-form escape hatch for arbitrary annotations.
+DOCUMENT_KEYS = frozenset(
+    {"guidelines", "waivers", "fx_rates", "base_currency", "portfolio_name",
+     "name", "description", "metadata"}
+)
+
+
+def validate_guideline_document(config: dict[str, Any]) -> None:
+    """Reject unknown top-level keys (e.g. ``guidlines``, ``fx_rate``)."""
+    if not isinstance(config, dict):
+        raise ValueError("Guideline document must be a mapping.")
+    reject_unknown_keys("Guideline document", config, DOCUMENT_KEYS)
 
 
 class ComplianceEngine:
@@ -34,6 +49,7 @@ class ComplianceEngine:
         The document is a dict with a ``guidelines`` list (each entry a rule
         config with at least a ``type``) and an optional ``waivers`` list.
         """
+        validate_guideline_document(config)
         guidelines = config.get("guidelines")
         if not isinstance(guidelines, list) or not guidelines:
             raise ValueError(

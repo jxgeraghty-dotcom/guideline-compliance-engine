@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from compliance.compare import ReportComparison, compare_reports
-from compliance.engine import ComplianceEngine
+from compliance.engine import ComplianceEngine, validate_guideline_document
 from compliance.loaders import (
     LoaderError,
     load_guidelines,
@@ -46,6 +46,7 @@ def evaluate_account(
         portfolio_path, name=name, as_of=as_of, base_currency=base_currency
     )
     guidelines = load_guidelines(guidelines_path)
+    validate_guideline_document(guidelines)
     resolve_restricted_lists(guidelines, Path(guidelines_path).resolve().parent)
     if guidelines.get("fx_rates"):
         portfolio.fx_rates.update(normalize_fx_rates(guidelines["fx_rates"]))

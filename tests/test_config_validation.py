@@ -62,3 +62,35 @@ def test_waiver_valid_config_accepted():
         {"rule": "R", "subject": "S", "reason": "x", "approved_by": "A", "expires": "2026-12-31"}
     )
     assert w.rule == "R" and w.expires == "2026-12-31"
+
+
+# --------------------------------------------------------------------------- #
+# Top-level guideline document
+# --------------------------------------------------------------------------- #
+
+_SECTOR_DOC = {"guidelines": [{"id": "S", "type": "sector_cap", "max_weight": 0.25}]}
+
+
+def test_document_misspelled_guidelines_key_is_rejected():
+    with pytest.raises(ValueError) as exc:
+        ComplianceEngine.from_config({"guidlines": _SECTOR_DOC["guidelines"]})
+    assert "guidelines" in str(exc.value)
+
+
+def test_document_misspelled_fx_rates_key_is_rejected():
+    with pytest.raises(ValueError) as exc:
+        ComplianceEngine.from_config(dict(_SECTOR_DOC, fx_rate={"EUR": 1.1}))
+    assert "fx_rates" in str(exc.value)
+
+
+def test_document_allows_known_metadata_and_free_form_block():
+    engine = ComplianceEngine.from_config(
+        dict(
+            _SECTOR_DOC,
+            portfolio_name="Acct 1",
+            base_currency="USD",
+            fx_rates={"EUR": 1.1},
+            metadata={"owner": "desk A", "notes": "anything goes here"},
+        )
+    )
+    assert len(engine.rules) == 1
