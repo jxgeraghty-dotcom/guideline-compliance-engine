@@ -1,0 +1,4 @@
+# Store all text files with LF in the repository; working-copy line endings
+# follow each contributor's platform. Silences per-file CRLF warnings on
+# Windows and keeps the history free of line-ending churn.
+* text=auto
