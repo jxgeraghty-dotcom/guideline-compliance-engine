@@ -2,14 +2,16 @@
 
 Caps the portfolio weight in any one sector, with optional per-sector
 overrides (e.g. a tighter cap on Financials) and optional per-sector floors
-(minimum weights, e.g. a mandate to hold at least X% government).
+(minimum weights, e.g. a mandate to hold at least X% government). With
+``look_through`` enabled, a derivative's notional is attributed to its
+underlying sector rather than its (small) market value.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
-from compliance.models import Portfolio, Severity
+from compliance.models import Portfolio, Position, Severity
 from compliance.rules.base import Finding, Rule, RuleResult, register_rule
 
 
@@ -23,6 +25,8 @@ class SectorCapRule(Rule):
         floors (dict, optional): ``{sector: min}`` per-sector minima.
         warn_ratio (float, optional): warn when weight reaches this fraction of
             the cap; default ``0.9``.
+        look_through (bool, optional): attribute derivative notional to the
+            underlying sector; default ``false``.
     """
 
     rule_type = "sector_cap"
@@ -33,9 +37,16 @@ class SectorCapRule(Rule):
         self.overrides: dict[str, float] = dict(config.get("overrides") or {})
         self.floors: dict[str, float] = dict(config.get("floors") or {})
         self.warn_ratio = self._get_number("warn_ratio", 0.9) or 0.9
+        self.look_through = bool(config.get("look_through", False))
 
     def evaluate(self, portfolio: Portfolio) -> RuleResult:
-        weights = portfolio.aggregate_weight(lambda p: p.sector)
+        key: Callable[[Position], str] = (
+            (lambda p: p.risk_sector) if self.look_through else (lambda p: p.sector)
+        )
+        value: Callable[[Position], float] | None = (
+            portfolio.base_exposure if self.look_through else None
+        )
+        weights = portfolio.aggregate_weight(key, value)
         findings: list[Finding] = []
 
         for sector, weight in sorted(weights.items(), key=lambda kv: kv[1], reverse=True):
@@ -90,6 +101,7 @@ class SectorCapRule(Rule):
         metrics = {
             "sector_count": len(weights),
             "default_cap": self.max_weight,
+            "look_through": self.look_through,
             "sector_weights": dict(
                 sorted(weights.items(), key=lambda kv: kv[1], reverse=True)
             ),

@@ -23,6 +23,9 @@ class DurationBandRule(Rule):
         max_duration (float, required): upper edge, in years.
         warn_buffer (float, optional): warn when within this many years of an
             edge; default ``0.0`` (no warning zone).
+        look_through (bool, optional): weight duration by economic exposure
+            (notional) so rate overlays such as bond futures and swaps count
+            their true contribution; default ``false``.
     """
 
     rule_type = "duration_band"
@@ -37,10 +40,13 @@ class DurationBandRule(Rule):
                 f"exceed max_duration ({self.max_duration})."
             )
         self.warn_buffer = self._get_number("warn_buffer", 0.0) or 0.0
+        self.look_through = bool(config.get("look_through", False))
 
     def evaluate(self, portfolio: Portfolio) -> RuleResult:
-        duration = portfolio.weighted_average(lambda p: p.duration)
+        basis = portfolio.base_exposure if self.look_through else portfolio.base_value
+        duration = portfolio.weighted_average(lambda p: p.duration, weight=basis)
         findings: list[Finding] = []
+        nav = portfolio.nav
 
         # Data-quality flag: fixed-income holdings missing a duration understate
         # the portfolio figure, so surface any material gap.
@@ -48,7 +54,7 @@ class DurationBandRule(Rule):
             p for p in portfolio.positions
             if p.duration is None and p.asset_class.lower().startswith("fixed")
         ]
-        missing_weight = sum(portfolio.weight(p) for p in missing)
+        missing_weight = sum(basis(p) for p in missing) / nav if nav else 0.0
         if missing_weight > 0:
             findings.append(
                 Finding(
@@ -106,6 +112,7 @@ class DurationBandRule(Rule):
             "portfolio_duration": duration,
             "min_duration": self.min_duration,
             "max_duration": self.max_duration,
+            "look_through": self.look_through,
         }
         return self._new_result(findings, metrics)
 

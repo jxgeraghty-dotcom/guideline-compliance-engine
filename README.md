@@ -12,6 +12,14 @@ it in a terminal for a formatted report, emit JSON for a downstream system, or
 wire it into CI/pre-trade checks where a **non-zero exit code blocks on a
 breach**.
 
+Beyond the four core rules it also handles the details that make guideline
+monitoring realistic: **ultimate-parent aggregation** (measure a limit across
+a banking group's issuing entities), **multi-currency exposure** (FX-convert
+holdings to base currency and cap foreign-currency risk), **derivatives
+look-through** (attribute a CDS or future's notional to its underlying
+issuer/sector/duration, not its small market value), and **period-over-period
+comparison** against a prior report ("what newly breached since last night?").
+
 ```text
 ==============================================================================
   GUIDELINE COMPLIANCE REPORT
@@ -112,14 +120,20 @@ such as `cusip`/`isin`/`ticker` → `security_id`, `mv`/`value` → `market_valu
 |-----------------|----------|---------------------------------------------------|
 | `security_id`   | yes      | CUSIP/ISIN/ticker or any unique identifier        |
 | `issuer`        | yes      | Used for issuer-concentration aggregation         |
-| `market_value`  | yes      | In the portfolio's base currency                  |
+| `market_value`  | yes      | Mark-to-market, in the position's own `currency`  |
 | `sector`        | no       | Used for sector caps and issuer exemptions        |
 | `asset_class`   | no       | Defaults to `Fixed Income`                        |
 | `rating`        | no       | S&P/Fitch (`BBB-`) or Moody's (`Baa3`); `NR` = unrated |
 | `duration`      | no       | Effective duration in years                       |
-| `currency`      | no       | Informational; conversion is assumed upstream     |
+| `currency`      | no       | Defaults to `USD`; FX-converted to base via `fx_rates` |
+| `ultimate_parent` | no     | Roll several issuing entities up to one parent    |
+| `instrument_type` | no     | `bond` (default), `cds`, `future`, `swap`, `option`, … |
+| `notional`      | no       | Economic exposure for a derivative (may be negative) |
+| `underlying_issuer` | no   | Reference entity for look-through (e.g. a CDS name) |
+| `underlying_sector` | no   | Reference sector for look-through                 |
 
-JSON portfolios use `{ "name", "base_currency", "as_of", "positions": [ ... ] }`.
+JSON portfolios use
+`{ "name", "base_currency", "as_of", "fx_rates": {...}, "positions": [ ... ] }`.
 
 ### Guidelines (`.yaml`, `.yml` or `.json`)
 
@@ -130,10 +144,11 @@ rule keyed by `type`. See [`examples/guidelines.yaml`](examples/guidelines.yaml)
 
 | `type`                  | Checks                                                        | Key config |
 |-------------------------|--------------------------------------------------------------|------------|
-| `issuer_concentration`  | Max weight in any single issuer                              | `max_weight`, `warn_at`, `overrides`, `exempt_sectors`, `exempt_issuers` |
-| `credit_floor`          | Minimum rating; policed below-floor (high-yield) bucket      | `min_rating`, `max_below_weight`, `warn_at`, `treat_unrated_as` |
-| `duration_band`         | Portfolio effective duration within a `[min, max]` band      | `min_duration`, `max_duration`, `warn_buffer` |
-| `sector_cap`            | Max (and optional min) weight per sector                     | `max_weight`, `overrides`, `floors`, `warn_ratio` |
+| `issuer_concentration`  | Max weight in any single issuer or parent group             | `max_weight`, `warn_at`, `overrides`, `exempt_sectors`, `exempt_issuers`, `level`, `look_through` |
+| `credit_floor`          | Minimum rating; policed below-floor (high-yield) bucket      | `min_rating`, `max_below_weight`, `warn_at`, `treat_unrated_as`, `look_through` |
+| `duration_band`         | Portfolio effective duration within a `[min, max]` band      | `min_duration`, `max_duration`, `warn_buffer`, `look_through` |
+| `sector_cap`            | Max (and optional min) weight per sector                     | `max_weight`, `overrides`, `floors`, `warn_ratio`, `look_through` |
+| `currency_exposure`     | Cap per-currency and aggregate non-base exposure            | `max_per_currency`, `overrides`, `max_aggregate_foreign`, `warn_ratio` |
 
 Every rule shares `id` and `description`. Numeric limits are **fractions**
 (`0.05` = 5%). Highlights:
@@ -153,23 +168,79 @@ Every rule shares `id` and `description`. Numeric limits are **fractions**
   that are missing a duration (which would understate the portfolio figure).
 - **Sector cap** supports per-sector `overrides` (tighten Financials, loosen
   Government) and `floors` (minimum-weight mandates).
+- **Currency exposure** caps any single non-base currency (`max_per_currency`,
+  per-currency `overrides`) and the aggregate non-base weight
+  (`max_aggregate_foreign`), all measured after FX conversion to base currency.
+
+### Advanced controls
+
+The [`examples/portfolio_multi.csv`](examples/portfolio_multi.csv) /
+[`examples/guidelines_multi.yaml`](examples/guidelines_multi.yaml) pair exercises
+all of these at once:
+
+```bash
+compliance-check check -p examples/portfolio_multi.csv -g examples/guidelines_multi.yaml
+```
+
+- **Ultimate-parent aggregation** — set `level: ultimate_parent` on an issuer
+  rule and the limit is measured across every entity that shares an
+  `ultimate_parent`, so "JPMorgan Chase Bank NA" and "JPMorgan Chase & Co" count
+  as one 6% exposure to the group rather than two 3% names.
+- **Multi-currency exposure** — supply `fx_rates` (in the guideline document or
+  the portfolio JSON) mapping each currency to its value in base currency
+  (`EUR: 1.08`). Weights, NAV and every limit are then computed in base terms.
+  The engine refuses to run if a held currency has no rate, rather than silently
+  mis-weighting the book.
+- **Derivatives look-through** — set `look_through: true` on a rule and a
+  derivative contributes its **notional** (attributed to `underlying_issuer` /
+  `underlying_sector`) instead of its small mark. A single-name CDS then counts
+  toward the reference entity's concentration and credit bucket; a bond future's
+  notional counts toward duration.
+
+## Comparing against a baseline (as-of / look-back)
+
+Save one run as JSON, then compare a later run against it to see exactly what
+changed — which rules newly breached, which cleared, and which specific
+issuers/sectors appeared or dropped off:
+
+```bash
+# period 1 — snapshot the baseline
+compliance-check check -p last_month.csv -g ima.yaml -f json -o baseline.json
+
+# period 2 — today's book, with a "changes since baseline" section appended
+compliance-check check -p today.csv -g ima.yaml --baseline baseline.json
+```
+
+```text
+------------------------------------------------------------------------------
+  CHANGES SINCE BASELINE  (as of 2026-06-30T..., was COMPLIANT)
+  ^ NEW_BREACH   ISSUER-CONC-01  (PASS -> BREACH)
+        + now flagged: JPMorgan Chase
+  ^ NEW_BREACH   SECTOR-CAP-01   (PASS -> BREACH)
+        + now flagged: Financials
+```
+
+The comparison is included in the JSON and HTML outputs too. It matches rules by
+`id`, so keep guideline ids stable across periods.
 
 ## Architecture
 
 ```
 src/compliance/
-├── models.py      # Position, Portfolio, Severity — I/O-free domain model
+├── models.py      # Position, Portfolio, Severity — I/O-free model (FX + exposure)
 ├── ratings.py     # S&P/Moody's rating scale, notches, weighted-average rating
 ├── rules/
 │   ├── base.py    # Rule ABC, Finding, RuleResult, and the type registry
-│   ├── issuer_concentration.py
-│   ├── credit_floor.py
-│   ├── duration_band.py
-│   └── sector_cap.py
+│   ├── issuer_concentration.py   # + ultimate-parent, look-through
+│   ├── credit_floor.py           # + look-through
+│   ├── duration_band.py          # + look-through
+│   ├── sector_cap.py             # + look-through
+│   └── currency_exposure.py
 ├── engine.py      # builds rules from config, runs them, assembles the report
 ├── report.py      # ComplianceReport + text / JSON / HTML renderers
-├── loaders.py     # CSV/JSON portfolios, YAML/JSON guidelines
-└── cli.py         # argparse CLI, exit-code gating
+├── compare.py     # as-of / look-back diff against a prior report
+├── loaders.py     # CSV/JSON portfolios (+ FX), YAML/JSON guidelines
+└── cli.py         # argparse CLI, exit-code gating, --baseline comparison
 ```
 
 Design choices worth calling out:
@@ -221,21 +292,27 @@ then just works.
 python -m pytest
 ```
 
-50 tests cover the rating scale, each rule (breach / warn / exemption / data
-edge cases), the engine (rollup, duplicate-id and error handling), the loaders,
-all three renderers, and the CLI's exit-code behaviour. The test config puts
-`src/` on the path, so the suite runs without an install.
+70 tests cover the rating scale, each rule (breach / warn / exemption / data
+edge cases), FX conversion, ultimate-parent aggregation, derivatives
+look-through, the currency rule, baseline comparison, the engine (rollup,
+duplicate-id and error handling), the loaders, all three renderers, and the
+CLI's exit-code behaviour. The test config puts `src/` on the path, so the
+suite runs without an install.
 
 ## Scope & assumptions
 
-- Market values are assumed to be in the portfolio's base currency; FX
-  conversion is expected to happen upstream.
-- Long-only: negative market values are rejected at construction.
+- FX rates convert every holding to the portfolio's base currency; the engine
+  requires a rate for each currency held. Cross-rates/triangulation are out of
+  scope — supply direct base-currency rates.
+- Cash instruments are long-only (negative marks are rejected); derivatives may
+  carry a negative mark or a signed `notional` to represent a short/hedge.
 - Ratings map onto the S&P/Fitch scale; Moody's grades are normalised in.
+- Look-through uses a derivative's notional as its economic exposure (a
+  first-order proxy); delta/DV01 adjustment is a natural refinement.
 
-These are deliberate simplifications for a focused, auditable core — each is a
-natural extension point (multi-currency exposure, derivatives look-through,
-issuer ultimate-parent aggregation, look-back/as-of comparisons).
+Further extension points: issuer *guarantor* look-through, option delta
+weighting, benchmark-relative (active) limits, and scheduled runs that persist
+each night's report as the next day's baseline.
 
 ## License
 

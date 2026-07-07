@@ -7,6 +7,7 @@ can build a rule from a guideline config dict by its ``type`` string.
 
 from compliance.rules import (
     credit_floor,
+    currency_exposure,
     duration_band,
     issuer_concentration,
     sector_cap,
@@ -28,6 +29,7 @@ __all__ = [
     "create_rule",
     "register_rule",
     "credit_floor",
+    "currency_exposure",
     "duration_band",
     "issuer_concentration",
     "sector_cap",

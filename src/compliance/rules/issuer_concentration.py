@@ -1,29 +1,40 @@
 """Issuer-concentration rule.
 
 Caps the portfolio weight held in any single issuer — the classic "no more
-than 5% in one name" IMA guideline. Supports per-issuer overrides (e.g. a
-higher limit for a specific name) and sector/issuer exemptions (e.g. sovereign
-debt often carries no issuer cap).
+than 5% in one name" IMA guideline. Supports:
+
+* per-issuer ``overrides`` (a name with a higher limit);
+* sector/issuer ``exemptions`` (sovereign debt often carries no issuer cap);
+* ``level: ultimate_parent`` to aggregate issuing entities up to their parent,
+  so exposure to a banking group is measured across all its issuing vehicles;
+* ``look_through`` to attribute a derivative's notional to its reference
+  entity rather than counting its (small) market value.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
-from compliance.models import Portfolio, Severity
+from compliance.models import Portfolio, Position, Severity
 from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+
+_LEVELS = {"issuer", "ultimate_parent"}
+_LEVEL_ALIASES = {"parent": "ultimate_parent"}
 
 
 @register_rule
 class IssuerConcentrationRule(Rule):
-    """Flag issuers whose aggregate weight exceeds a limit.
+    """Flag issuers (or parents) whose aggregate weight exceeds a limit.
 
     Config keys:
         max_weight (float, required): default cap as a fraction, e.g. ``0.05``.
         warn_at (float, optional): warn threshold; defaults to 90% of the cap.
-        overrides (dict, optional): ``{issuer: cap}`` per-issuer limits.
-        exempt_issuers (list, optional): issuers excluded from the check.
+        overrides (dict, optional): ``{name: cap}`` per-issuer/parent limits.
+        exempt_issuers (list, optional): names excluded from the check.
         exempt_sectors (list, optional): sectors whose issuers are excluded.
+        level (str, optional): ``issuer`` (default) or ``ultimate_parent``.
+        look_through (bool, optional): attribute derivative notional to the
+            underlying issuer; default ``false``.
     """
 
     rule_type = "issuer_concentration"
@@ -35,39 +46,64 @@ class IssuerConcentrationRule(Rule):
         self.overrides: dict[str, float] = dict(config.get("overrides") or {})
         self.exempt_issuers = {str(i) for i in (config.get("exempt_issuers") or [])}
         self.exempt_sectors = {str(s) for s in (config.get("exempt_sectors") or [])}
+        self.look_through = bool(config.get("look_through", False))
+        level = str(config.get("level", "issuer")).lower()
+        level = _LEVEL_ALIASES.get(level, level)
+        if level not in _LEVELS:
+            raise ValueError(
+                f"Rule {self.rule_id!r}: 'level' must be one of {sorted(_LEVELS)}, "
+                f"got {config.get('level')!r}."
+            )
+        self.level = level
 
-    def _is_exempt(self, portfolio: Portfolio, issuer: str) -> bool:
-        if issuer in self.exempt_issuers:
+    def _name_of(self, position: Position) -> str:
+        """The concentration subject a position rolls up to."""
+        if self.look_through and position.underlying_issuer:
+            return position.underlying_issuer
+        if self.level == "ultimate_parent":
+            return position.parent
+        return position.issuer
+
+    def _is_exempt(self, name: str, constituents: list[Position]) -> bool:
+        if name in self.exempt_issuers:
             return True
         if not self.exempt_sectors:
             return False
-        # Exempt only if *every* position for the issuer is in an exempt sector.
-        issuer_positions = [p for p in portfolio.positions if p.issuer == issuer]
-        return bool(issuer_positions) and all(
-            p.sector in self.exempt_sectors for p in issuer_positions
-        )
+        # Exempt only if *every* constituent holding sits in an exempt sector.
+        return all(p.sector in self.exempt_sectors for p in constituents)
 
     def evaluate(self, portfolio: Portfolio) -> RuleResult:
-        weights = portfolio.aggregate_weight(lambda p: p.issuer)
+        nav = portfolio.nav
+        value_fn: Callable[[Position], float] = (
+            portfolio.base_exposure if self.look_through else portfolio.base_value
+        )
+        groups = portfolio.positions_by(self._name_of)
+
         findings: list[Finding] = []
-        largest_issuer: str | None = None
+        largest_name: str | None = None
         largest_weight = 0.0
 
-        for issuer, weight in sorted(weights.items(), key=lambda kv: kv[1], reverse=True):
-            if self._is_exempt(portfolio, issuer):
+        weights = {
+            name: (sum(value_fn(p) for p in ps) / nav if nav else 0.0)
+            for name, ps in groups.items()
+        }
+
+        for name, weight in sorted(weights.items(), key=lambda kv: kv[1], reverse=True):
+            constituents = groups[name]
+            if self._is_exempt(name, constituents):
                 continue
             if weight > largest_weight:
-                largest_issuer, largest_weight = issuer, weight
+                largest_name, largest_weight = name, weight
 
-            limit = self.overrides.get(issuer, self.max_weight)
+            rolls_up = self._rollup_note(name, constituents)
+            limit = self.overrides.get(name, self.max_weight)
             if weight > limit:
                 findings.append(
                     Finding(
-                        subject=issuer,
+                        subject=name,
                         message=(
-                            f"{issuer} is {_pct(weight)} of the portfolio, "
-                            f"over the {_pct(limit)} issuer limit "
-                            f"(+{_pct(weight - limit)})."
+                            f"{name} is {_pct(weight)} of the portfolio, over the "
+                            f"{_pct(limit)} issuer limit (+{_pct(weight - limit)}){rolls_up}."
                         ),
                         severity=Severity.BREACH,
                         observed=weight,
@@ -78,10 +114,10 @@ class IssuerConcentrationRule(Rule):
             elif weight >= min(self.warn_at, limit):
                 findings.append(
                     Finding(
-                        subject=issuer,
+                        subject=name,
                         message=(
-                            f"{issuer} is {_pct(weight)} of the portfolio, "
-                            f"approaching the {_pct(limit)} issuer limit."
+                            f"{name} is {_pct(weight)} of the portfolio, approaching "
+                            f"the {_pct(limit)} issuer limit{rolls_up}."
                         ),
                         severity=Severity.WARN,
                         observed=weight,
@@ -91,12 +127,21 @@ class IssuerConcentrationRule(Rule):
                 )
 
         metrics = {
+            "level": self.level,
+            "look_through": self.look_through,
             "issuer_count": len(weights),
-            "largest_issuer": largest_issuer,
+            "largest_issuer": largest_name,
             "largest_issuer_weight": largest_weight,
             "limit": self.max_weight,
         }
         return self._new_result(findings, metrics)
+
+    def _rollup_note(self, name: str, constituents: list[Position]) -> str:
+        """Note the constituent issuers when aggregating at parent level."""
+        if self.level != "ultimate_parent":
+            return ""
+        issuers = sorted({p.issuer for p in constituents if p.issuer != name})
+        return f" [rolls up: {', '.join(issuers)}]" if issuers else ""
 
 
 def _pct(value: float) -> str:

@@ -1,0 +1,59 @@
+# Advanced IMA guideline set — exercises the v0.2 capabilities:
+#   * ultimate-parent aggregation (issuer limit measured across group entities)
+#   * derivatives look-through (CDS notional -> reference entity/credit;
+#     bond-future notional -> duration)
+#   * multi-currency exposure (FX conversion + a currency-exposure rule)
+#
+# Run:
+#   compliance-check check -p examples/portfolio_multi.csv -g examples/guidelines_multi.yaml
+
+portfolio_name: "Global Multi-Asset — Account 20871"
+base_currency: USD
+
+# Value of 1 unit of each currency in the base currency (USD).
+fx_rates:
+  EUR: 1.08
+  GBP: 1.27
+
+guidelines:
+  - id: ISSUER-GROUP-01
+    type: issuer_concentration
+    description: "Max 5% per issuing GROUP (ultimate parent), with derivative look-through."
+    max_weight: 0.05
+    warn_at: 0.044
+    level: ultimate_parent
+    look_through: true
+    exempt_sectors: ["Government"]
+
+  - id: CREDIT-FLOOR-01
+    type: credit_floor
+    description: "Min BBB-; <=5% below investment grade, counting CDS notional by look-through."
+    min_rating: "BBB-"
+    max_below_weight: 0.05
+    look_through: true
+    treat_unrated_as: "warn"
+
+  - id: DURATION-BAND-01
+    type: duration_band
+    description: "Effective duration 3.0-7.0 yrs, including rate-derivative overlays (look-through)."
+    min_duration: 3.0
+    max_duration: 7.0
+    warn_buffer: 0.5
+    look_through: true
+
+  - id: SECTOR-CAP-01
+    type: sector_cap
+    description: "Max 25% per sector (Financials 20%, Government 80%), with look-through."
+    max_weight: 0.25
+    warn_ratio: 0.9
+    look_through: true
+    overrides:
+      Financials: 0.20
+      Government: 0.80
+
+  - id: CURRENCY-EXP-01
+    type: currency_exposure
+    description: "Max 10% in any single non-USD currency; max 15% non-USD in aggregate."
+    max_per_currency: 0.10
+    max_aggregate_foreign: 0.15
+    warn_ratio: 0.9

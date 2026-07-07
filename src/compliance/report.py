@@ -12,10 +12,13 @@ import os
 import sys
 from dataclasses import dataclass
 from html import escape
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from compliance.models import Severity
 from compliance.rules.base import RuleResult
+
+if TYPE_CHECKING:  # avoid a circular import; compare.py imports this module.
+    from compliance.compare import ReportComparison
 
 
 @dataclass
@@ -111,6 +114,19 @@ _BADGE = {
     Severity.BREACH: "BREACH",
 }
 
+# Comparison transitions -> (ASCII glyph, colour severity, css class).
+# Glyphs are ASCII so the text report encodes cleanly on any console (Windows
+# cp1252 included); direction is reinforced by colour and the transition label.
+_TRANSITION_STYLE = {
+    "NEW_BREACH": ("^", Severity.BREACH, "breach"),
+    "WORSENED": ("^", Severity.BREACH, "breach"),
+    "NEW_RULE": ("+", Severity.INFO, "pass"),
+    "RESOLVED": ("v", Severity.PASS, "pass"),
+    "IMPROVED": ("v", Severity.PASS, "pass"),
+    "REMOVED_RULE": ("-", Severity.INFO, "pass"),
+    "UNCHANGED": ("=", Severity.INFO, "pass"),
+}
+
 
 def _use_color(stream: TextIO, override: bool | None) -> bool:
     if override is not None:
@@ -129,6 +145,7 @@ def render_text(
     *,
     color: bool | None = None,
     stream: TextIO | None = None,
+    comparison: "ReportComparison | None" = None,
 ) -> str:
     """Render a coloured, human-readable report."""
     stream = stream or sys.stdout
@@ -176,11 +193,39 @@ def render_text(
                 lines.append(paint(f"         {summary}", _DIM) if use_color else f"         {summary}")
         lines.append("")
 
+    if comparison is not None:
+        lines.extend(_render_comparison_text(comparison, paint, width))
+
     lines.append("=" * width)
     footer = f"  RESULT: {report.status_label}"
     lines.append(paint(footer, _BOLD + _ANSI[overall]))
     lines.append("=" * width)
     return "\n".join(lines)
+
+
+def _render_comparison_text(comparison, paint, width: int) -> list[str]:
+    lines = ["-" * width]
+    lines.append(
+        paint("  CHANGES SINCE BASELINE", _BOLD)
+        + f"  (as of {comparison.baseline_label}, was {comparison.prior_status})"
+    )
+    changed = comparison.changed_rules()
+    if not changed:
+        lines.append("  No change in rule status since the baseline.")
+        lines.append("")
+        return lines
+    for c in changed:
+        glyph, sev, _ = _TRANSITION_STYLE[c.transition]
+        prior = c.prior_severity or "-"
+        current = c.current_severity or "-"
+        head = f"  {glyph} {c.transition:<12} {c.rule_id}  ({prior} -> {current})"
+        lines.append(paint(head, _ANSI[sev]))
+        for subj in c.new_subjects:
+            lines.append(f"        + now flagged: {subj}")
+        for subj in c.resolved_subjects:
+            lines.append(f"        - cleared:     {subj}")
+    lines.append("")
+    return lines
 
 
 def _sorted_findings(result: RuleResult) -> list:
@@ -211,12 +256,24 @@ def _pass_summary(result: RuleResult) -> str | None:
     return None
 
 
-def render_json(report: ComplianceReport, *, indent: int = 2) -> str:
+def render_json(
+    report: ComplianceReport,
+    *,
+    indent: int = 2,
+    comparison: "ReportComparison | None" = None,
+) -> str:
     """Render the report as a JSON document."""
-    return json.dumps(report.to_dict(), indent=indent)
+    payload = report.to_dict()
+    if comparison is not None:
+        payload["comparison"] = comparison.to_dict()
+    return json.dumps(payload, indent=indent)
 
 
-def render_html(report: ComplianceReport) -> str:
+def render_html(
+    report: ComplianceReport,
+    *,
+    comparison: "ReportComparison | None" = None,
+) -> str:
     """Render a standalone, styled HTML report."""
     css_class = {
         Severity.PASS: "pass",
@@ -265,6 +322,43 @@ def render_html(report: ComplianceReport) -> str:
         generated=escape(report.generated_at),
         as_of=as_of,
         rows="\n".join(rows),
+        comparison=_render_comparison_html(comparison),
+    )
+
+
+def _render_comparison_html(comparison) -> str:
+    if comparison is None:
+        return ""
+    changed = comparison.changed_rules()
+    header = (
+        f"<h2>Changes since baseline</h2>"
+        f"<p class='baseline'>Baseline as of {escape(str(comparison.baseline_label))} "
+        f"— was {escape(str(comparison.prior_status))}.</p>"
+    )
+    if not changed:
+        return (
+            f"<section class='changes'>{header}"
+            f"<p class='summary'>No change in rule status since the baseline.</p></section>"
+        )
+    items = []
+    for c in changed:
+        _, _, cls = _TRANSITION_STYLE[c.transition]
+        subjects = "".join(
+            f"<li class='subj-new'>now flagged: {escape(s)}</li>" for s in c.new_subjects
+        ) + "".join(
+            f"<li class='subj-clear'>cleared: {escape(s)}</li>" for s in c.resolved_subjects
+        )
+        subj_html = f"<ul class='subjects'>{subjects}</ul>" if subjects else ""
+        items.append(
+            f"<li class='{cls}'>"
+            f"<span class='badge {cls}'>{escape(c.transition.replace('_', ' '))}</span>"
+            f"<span class='chg-rid'>{escape(c.rule_id)}</span>"
+            f"<span class='chg-sev'>{escape(c.prior_severity or '—')} &rarr; "
+            f"{escape(c.current_severity or '—')}</span>{subj_html}</li>"
+        )
+    return (
+        f"<section class='changes'>{header}"
+        f"<ul class='change-list'>{''.join(items)}</ul></section>"
     )
 
 
@@ -312,6 +406,21 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   ul.findings li {{ font-size: 13px; padding: 6px 0 6px 0; display: flex;
     gap: 8px; align-items: baseline; }}
   p.summary {{ color: var(--muted); font-size: 12px; margin: 8px 0 0; font-style: italic; }}
+  section.changes {{ margin-top: 28px; }}
+  section.changes h2 {{ font-size: 15px; margin: 0 0 2px; }}
+  p.baseline {{ color: var(--muted); font-size: 12px; margin: 0 0 12px; }}
+  ul.change-list {{ list-style: none; margin: 0; padding: 0; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }}
+  ul.change-list > li {{ padding: 12px 16px; border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; }}
+  ul.change-list > li:first-child {{ border-top: none; }}
+  .chg-rid {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }}
+  .chg-sev {{ color: var(--muted); font-size: 12px; }}
+  ul.subjects {{ flex-basis: 100%; margin: 4px 0 0 4px; padding: 0; list-style: none;
+    font-size: 12px; }}
+  ul.subjects li {{ padding: 2px 0; }}
+  .subj-new {{ color: var(--breach); }}
+  .subj-clear {{ color: var(--pass); }}
   footer {{ margin-top: 20px; color: var(--muted); font-size: 12px; }}
 </style>
 </head>
@@ -331,6 +440,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   <table>
     {rows}
   </table>
+  {comparison}
   <footer>Generated {generated} · Guideline &amp; Compliance Monitoring Engine</footer>
 </div>
 </body>

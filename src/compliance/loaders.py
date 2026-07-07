@@ -43,6 +43,19 @@ _CSV_ALIASES = {
     "effective_duration": "duration",
     "currency": "currency",
     "ccy": "currency",
+    "ultimate_parent": "ultimate_parent",
+    "parent": "ultimate_parent",
+    "ultimate_parent_name": "ultimate_parent",
+    "guarantor": "ultimate_parent",
+    "instrument_type": "instrument_type",
+    "instrument": "instrument_type",
+    "notional": "notional",
+    "notional_value": "notional",
+    "notional_amount": "notional",
+    "underlying_issuer": "underlying_issuer",
+    "reference_entity": "underlying_issuer",
+    "underlying": "underlying_issuer",
+    "underlying_sector": "underlying_sector",
 }
 
 
@@ -52,6 +65,7 @@ def load_portfolio(
     name: str | None = None,
     base_currency: str | None = None,
     as_of: str | None = None,
+    fx_rates: dict[str, float] | None = None,
 ) -> Portfolio:
     """Load a portfolio from a ``.csv`` or ``.json`` file."""
     path = Path(path)
@@ -74,7 +88,20 @@ def load_portfolio(
         portfolio.base_currency = base_currency
     if as_of:
         portfolio.as_of = as_of
+    if fx_rates:
+        portfolio.fx_rates.update(normalize_fx_rates(fx_rates))
     return portfolio
+
+
+def normalize_fx_rates(raw: dict[str, Any]) -> dict[str, float]:
+    """Upper-case currency codes and coerce rates to float."""
+    rates: dict[str, float] = {}
+    for ccy, rate in raw.items():
+        try:
+            rates[str(ccy).strip().upper()] = float(rate)
+        except (TypeError, ValueError) as exc:
+            raise LoaderError(f"Invalid FX rate for {ccy!r}: {rate!r}.") from exc
+    return rates
 
 
 def _load_portfolio_csv(path: Path) -> Portfolio:
@@ -123,11 +150,13 @@ def _load_portfolio_json(path: Path) -> Portfolio:
     positions = [
         _build_position(p, f"{path}[{i}]") for i, p in enumerate(raw_positions)
     ]
+    fx_rates = normalize_fx_rates(meta.get("fx_rates") or {})
     return Portfolio(
         name=str(meta.get("name") or path.stem),
         positions=positions,
         base_currency=str(meta.get("base_currency", "USD")),
         as_of=meta.get("as_of"),
+        fx_rates=fx_rates,
     )
 
 
@@ -144,14 +173,17 @@ def _build_position(record: dict[str, Any], where: str) -> Position:
     except (KeyError, TypeError, ValueError) as exc:
         raise LoaderError(f"{where}: invalid or missing market_value.") from exc
 
-    duration = record.get("duration")
-    if duration in ("", None):
-        duration_val: float | None = None
-    else:
+    def _float(key: str) -> float | None:
+        value = record.get(key)
+        if value in ("", None):
+            return None
         try:
-            duration_val = float(duration)
+            return float(value)
         except (TypeError, ValueError) as exc:
-            raise LoaderError(f"{where}: invalid duration {duration!r}.") from exc
+            raise LoaderError(f"{where}: invalid {key} {value!r}.") from exc
+
+    duration_val = _float("duration")
+    notional_val = _float("notional")
 
     security_id = _str("security_id")
     issuer = _str("issuer")
@@ -168,6 +200,11 @@ def _build_position(record: dict[str, Any], where: str) -> Position:
             rating=_str("rating"),
             duration=duration_val,
             currency=_str("currency", "USD"),
+            ultimate_parent=_str("ultimate_parent"),
+            instrument_type=_str("instrument_type", "bond"),
+            notional=notional_val,
+            underlying_issuer=_str("underlying_issuer"),
+            underlying_sector=_str("underlying_sector"),
         )
     except ValueError as exc:
         raise LoaderError(f"{where}: {exc}") from exc

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guideline-compliance-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "A rules engine that checks a portfolio against IMA-style investment guidelines and produces a severity-tagged compliance report."
 readme = "README.md"
 requires-python = ">=3.10"

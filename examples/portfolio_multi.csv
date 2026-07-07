@@ -1,0 +1,21 @@
+security_id,issuer,sector,asset_class,market_value,rating,duration,currency,ultimate_parent,instrument_type,notional,underlying_issuer,underlying_sector
+912828A26,US Treasury,Government,Fixed Income,12000000,AA+,1.9,USD,,bond,,,
+91282CJ35,US Treasury,Government,Fixed Income,10000000,AA+,8.5,USD,,bond,,,
+91282CGT8,US Treasury,Government,Fixed Income,13000000,AA+,4.8,USD,,bond,,,
+DE0001102,Federal Republic of Germany,Government,Fixed Income,8000000,AAA,6.0,EUR,,bond,,,
+GB00B16NN2,United Kingdom,Government,Fixed Income,6000000,AA,9.0,GBP,,bond,,,
+46625HRL6,JPMorgan Chase Bank NA,Financials,Fixed Income,3000000,A-,5.2,USD,JPMorgan Chase & Co,bond,,,
+48128BAB7,JPMorgan Chase & Co,Financials,Fixed Income,3000000,A-,6.0,USD,JPMorgan Chase & Co,bond,,,
+38141GXH2,Goldman Sachs Group Inc,Financials,Fixed Income,2500000,BBB+,6.1,USD,Goldman Sachs Group Inc,bond,,,
+40056EPP3,GS Finance Corp,Financials,Fixed Income,1500000,BBB+,5.0,USD,Goldman Sachs Group Inc,bond,,,
+06051GHF9,Bank of America,Financials,Fixed Income,3500000,A-,4.8,USD,,bond,,,
+149123CB8,Caterpillar,Industrials,Fixed Income,3000000,A,6.5,USD,,bond,,,
+097023CY9,Boeing,Industrials,Fixed Income,3000000,BBB-,7.2,USD,,bond,,,
+037833EK8,Apple,Technology,Fixed Income,4000000,AA+,6.0,USD,,bond,,,
+68389XBK0,Oracle,Technology,Fixed Income,3000000,BBB,7.5,USD,,bond,,,
+26442CAK9,Duke Energy,Utilities,Fixed Income,3500000,BBB+,9.0,USD,,bond,,,
+50077LBA9,Kraft Heinz,Consumer Staples,Fixed Income,3000000,BBB-,6.8,USD,,bond,,,
+674599CL9,Occidental Petroleum,Energy,Fixed Income,3000000,BB+,4.0,USD,,bond,,,
+893830BF2,Transocean,Energy,Fixed Income,2000000,B,3.5,USD,,bond,,,
+CDS0RITEAID,CDS Protection Sold - Rite Aid,Consumer Cyclical,Credit Derivative,100000,CCC,,USD,,cds,5500000,Rite Aid,Consumer Cyclical
+FUTUST10Y,UST 10Y Future,Government,Rates Derivative,0,AA+,8.0,USD,,future,10000000,US Treasury,Government

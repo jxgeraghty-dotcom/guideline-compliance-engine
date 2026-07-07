@@ -38,6 +38,9 @@ class CreditFloorRule(Rule):
             90% of ``max_below_weight``.
         treat_unrated_as (str, optional): ``"warn"`` (default), ``"breach"``
             or ``"ignore"``.
+        look_through (bool, optional): weight below-floor exposure by derivative
+            notional (attributed to the reference entity's rating); default
+            ``false``.
     """
 
     rule_type = "credit_floor"
@@ -52,6 +55,7 @@ class CreditFloorRule(Rule):
             )
         self.max_below_weight = self._get_number("max_below_weight", 0.0)
         self.warn_at = self._get_number("warn_at", 0.9 * self.max_below_weight)
+        self.look_through = bool(config.get("look_through", False))
         unrated = str(config.get("treat_unrated_as", "warn")).lower()
         if unrated not in _UNRATED_SEVERITY:
             raise ValueError(
@@ -65,9 +69,16 @@ class CreditFloorRule(Rule):
         below_weight = 0.0
         below_positions: list[str] = []
         unrated_weight = 0.0
+        nav = portfolio.nav
+
+        def weight_of(position) -> float:
+            if not nav:
+                return 0.0
+            basis = portfolio.base_exposure if self.look_through else portfolio.base_value
+            return basis(position) / nav
 
         for p in portfolio.positions:
-            weight = portfolio.weight(p)
+            weight = weight_of(p)
             below = ratings.is_below_floor(p.rating, self.min_rating)
             if below is None:
                 unrated_weight += weight
@@ -94,13 +105,14 @@ class CreditFloorRule(Rule):
         findings.append(self._bucket_finding(below_weight, below_positions))
 
         avg = ratings.weighted_average_rating(
-            [(p.rating, p.market_value) for p in portfolio.positions]
+            [(p.rating, portfolio.base_value(p)) for p in portfolio.positions]
         )
         metrics = {
             "floor": self.min_rating,
             "below_floor_weight": below_weight,
             "below_floor_allowance": self.max_below_weight,
             "unrated_weight": unrated_weight,
+            "look_through": self.look_through,
             "weighted_average_rating": avg[0] if avg else None,
         }
         # Drop the bucket finding if it was a clean PASS with an empty bucket,

@@ -16,14 +16,21 @@ Exit codes make the tool usable as a CI/pre-trade gate:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from compliance import __version__
+from compliance.compare import compare_reports
 from compliance.engine import ComplianceEngine
-from compliance.loaders import LoaderError, load_guidelines, load_portfolio
-from compliance.models import Severity
+from compliance.loaders import (
+    LoaderError,
+    load_guidelines,
+    load_portfolio,
+    normalize_fx_rates,
+)
+from compliance.models import FxError, Severity
 from compliance.report import RENDERERS, render_html, render_json, render_text
 from compliance.rules.base import available_rule_types
 
@@ -57,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--output", "-o", help="Write the report to a file instead of stdout.")
     check.add_argument("--name", help="Override the portfolio name.")
     check.add_argument("--as-of", help="Override / set the as-of date (informational).")
+    check.add_argument("--base-currency", help="Override the portfolio base currency.")
+    check.add_argument(
+        "--baseline",
+        help="A prior report JSON to compare against (adds a 'changes since' section).",
+    )
     check.add_argument(
         "--fail-on",
         choices=sorted(_FAIL_ON),
@@ -81,34 +93,103 @@ def _cmd_list_rules(_: argparse.Namespace) -> int:
 
 def _cmd_check(args: argparse.Namespace) -> int:
     try:
-        portfolio = load_portfolio(args.portfolio, name=args.name, as_of=args.as_of)
+        portfolio = load_portfolio(
+            args.portfolio,
+            name=args.name,
+            as_of=args.as_of,
+            base_currency=args.base_currency,
+        )
         guidelines = load_guidelines(args.guidelines)
+        _apply_fx(portfolio, guidelines)
         engine = ComplianceEngine.from_config(guidelines)
+        comparison = _load_comparison(args.baseline)
     except (LoaderError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
-    report = engine.run(portfolio)
+    missing = portfolio.missing_currencies()
+    if missing:
+        print(
+            f"error: no FX rate for {', '.join(missing)} -> {portfolio.base_currency}. "
+            f"Add an 'fx_rates' mapping to the guidelines or portfolio file.",
+            file=sys.stderr,
+        )
+        return EXIT_ERROR
+
+    try:
+        report = engine.run(portfolio)
+    except FxError as exc:  # pragma: no cover - guarded by missing_currencies above
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    comparison_obj = compare_reports(report, comparison) if comparison else None
 
     if args.format == "text":
         # Never emit ANSI colour into a file; auto-detect only for a live stdout.
         color = False if (args.no_color or args.output) else None
-        rendered = render_text(report, color=color)
+        rendered = render_text(report, color=color, comparison=comparison_obj)
     elif args.format == "json":
-        rendered = render_json(report)
+        rendered = render_json(report, comparison=comparison_obj)
     else:
-        rendered = render_html(report)
+        rendered = render_html(report, comparison=comparison_obj)
 
     if args.output:
         Path(args.output).write_text(rendered + "\n", encoding="utf-8")
         print(f"Report written to {args.output}", file=sys.stderr)
     else:
-        print(rendered)
+        _safe_print(rendered)
 
     threshold = _FAIL_ON[args.fail_on]
     if threshold is not None and report.overall_severity >= threshold:
         return EXIT_FINDINGS
     return EXIT_OK
+
+
+def _apply_fx(portfolio, guidelines: dict[str, Any]) -> None:
+    """Merge FX rates declared in the guideline document into the portfolio.
+
+    The base currency comes from the portfolio (or ``--base-currency``); the
+    guideline document only supplies the rates used to value foreign holdings.
+    """
+    if guidelines.get("fx_rates"):
+        portfolio.fx_rates.update(normalize_fx_rates(guidelines["fx_rates"]))
+
+
+def _load_comparison(path: str | None) -> dict[str, Any] | None:
+    """Load a prior report JSON for baseline comparison."""
+    if not path:
+        return None
+    file = Path(path)
+    if not file.exists():
+        raise LoaderError(f"Baseline report not found: {file}")
+    try:
+        data = json.loads(file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise LoaderError(f"Baseline report {file} is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict) or "results" not in data:
+        raise LoaderError(
+            f"Baseline report {file} does not look like a report JSON "
+            f"(missing 'results'). Generate one with '-f json -o baseline.json'."
+        )
+    return data
+
+
+def _safe_print(text: str) -> None:
+    """Print, tolerating consoles that cannot encode exotic characters.
+
+    A limited console encoding (e.g. Windows cp1252) should never crash the run;
+    fall back to replacing any unencodable characters from user-supplied data.
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        stream = sys.stdout
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        buffer = getattr(stream, "buffer", None)
+        if buffer is not None:
+            buffer.write((text + "\n").encode(encoding, errors="replace"))
+        else:  # pragma: no cover - stream without a byte buffer
+            print(text.encode(encoding, errors="replace").decode(encoding))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
