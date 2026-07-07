@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from compliance.models import Portfolio, Position
+from compliance.validation import reject_unknown_keys
+
+#: Recognised top-level keys of a batch manifest.
+_MANIFEST_KEYS = frozenset({"accounts", "name", "description", "metadata"})
 
 
 class LoaderError(Exception):
@@ -338,4 +342,8 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         )
     if not isinstance(data, dict) or not isinstance(data.get("accounts"), list):
         raise LoaderError(f"Manifest {path} must contain an 'accounts' list.")
+    try:
+        reject_unknown_keys(f"Manifest {path.name}", data, _MANIFEST_KEYS)
+    except ValueError as exc:
+        raise LoaderError(str(exc)) from exc
     return data

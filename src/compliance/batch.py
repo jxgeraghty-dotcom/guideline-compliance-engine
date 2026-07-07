@@ -26,6 +26,12 @@ from compliance.loaders import (
 )
 from compliance.models import FxError, Severity
 from compliance.report import ComplianceReport
+from compliance.validation import reject_unknown_keys
+
+#: Recognised keys of a manifest account entry.
+_ACCOUNT_KEYS = frozenset(
+    {"name", "portfolio", "guidelines", "baseline", "base_currency", "as_of", "metadata"}
+)
 
 
 def evaluate_account(
@@ -123,11 +129,16 @@ class BatchResult:
 
 
 def run_manifest(manifest: dict[str, Any], base_dir: Path) -> BatchResult:
-    """Evaluate every account in a manifest, capturing per-account failures."""
+    """Evaluate every account in a manifest, capturing per-account failures.
+
+    A malformed account entry (unknown key, missing ``portfolio``/``guidelines``)
+    is captured as that account's error rather than aborting the whole batch.
+    """
     results: list[AccountResult] = []
     for account in manifest["accounts"]:
-        name = str(account.get("name") or account.get("portfolio") or "account")
+        name = _account_name(account)
         try:
+            _validate_account(account)
             report, comparison = evaluate_account(
                 _resolve(base_dir, account["portfolio"]),
                 _resolve(base_dir, account["guidelines"]),
@@ -142,6 +153,21 @@ def run_manifest(manifest: dict[str, Any], base_dir: Path) -> BatchResult:
     return BatchResult(
         results, generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds")
     )
+
+
+def _account_name(account: Any) -> str:
+    if isinstance(account, dict):
+        return str(account.get("name") or account.get("portfolio") or "account")
+    return "account"
+
+
+def _validate_account(account: Any) -> None:
+    if not isinstance(account, dict):
+        raise ValueError("manifest account entry must be a mapping.")
+    reject_unknown_keys("Manifest account", account, _ACCOUNT_KEYS)
+    for required in ("portfolio", "guidelines"):
+        if not account.get(required):
+            raise ValueError(f"manifest account is missing required {required!r}.")
 
 
 def _resolve(base_dir: Path, value: str) -> Path:

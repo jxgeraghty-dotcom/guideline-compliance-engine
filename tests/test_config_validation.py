@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from compliance.batch import run_manifest
 from compliance.engine import ComplianceEngine
+from compliance.loaders import LoaderError, load_manifest
 from compliance.rules.base import create_rule
 from compliance.rules.issuer_concentration import IssuerConcentrationRule
 from compliance.validation import reject_unknown_keys
 from compliance.waivers import Waiver
+
+EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
 def test_reject_unknown_keys_suggests_near_miss():
@@ -94,3 +100,39 @@ def test_document_allows_known_metadata_and_free_form_block():
         )
     )
     assert len(engine.rules) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Batch manifest
+# --------------------------------------------------------------------------- #
+
+def test_manifest_unknown_top_level_key_is_rejected(tmp_path):
+    bad = tmp_path / "m.json"
+    bad.write_text('{"accounts": [], "acounts": []}', encoding="utf-8")
+    with pytest.raises(LoaderError) as exc:
+        load_manifest(bad)
+    assert "did you mean 'accounts'" in str(exc.value)
+
+
+def test_manifest_account_unknown_key_becomes_account_error():
+    manifest = {
+        "accounts": [
+            {"name": "typo", "portfolio": "portfolio.csv",
+             "guidlines": "guidelines.json"},  # misspelled 'guidelines'
+        ]
+    }
+    batch = run_manifest(manifest, EXAMPLES)
+    result = batch.results[0]
+    assert result.report is None
+    assert "guidelines" in (result.error or "")   # suggestion + missing-required
+
+
+def test_manifest_account_missing_required_becomes_account_error():
+    manifest = {"accounts": [{"name": "x", "portfolio": "portfolio.csv"}]}
+    batch = run_manifest(manifest, EXAMPLES)
+    assert "guidelines" in (batch.results[0].error or "")
+
+
+def test_valid_manifest_still_loads():
+    manifest = load_manifest(EXAMPLES / "accounts.yaml")
+    assert len(manifest["accounts"]) == 3

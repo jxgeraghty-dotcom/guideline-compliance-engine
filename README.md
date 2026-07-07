@@ -330,12 +330,13 @@ Design choices worth calling out:
 - **The engine degrades gracefully.** A rule that raises is captured as an
   error-category breach rather than aborting the run — a monitoring engine
   should always produce a report and tell you what it could not evaluate.
-- **Config is validated strictly.** The guideline document, each rule and each
-  waiver declare their allowed keys; an unknown key is rejected with a "did you
-  mean …?" suggestion rather than ignored (a free-form `metadata:` block is
-  allowed at the document level for annotations). For a control that fails safe
+- **Config is validated strictly.** The guideline document, each rule, each
+  waiver and the batch manifest declare their allowed keys; an unknown key is
+  rejected with a "did you mean …?" suggestion rather than ignored (a free-form
+  `metadata:` block is allowed for annotations). For a control that fails safe
   on absence, a silently-mistyped key (`look_throuh`, `expiry`, `fx_rate`) is a
-  false negative, so the tool fails loud.
+  false negative, so the tool fails loud — while a malformed manifest account is
+  still captured as that account's error, keeping the batch resilient.
 
 ### Adding a new rule
 
@@ -370,7 +371,7 @@ then just works.
 
 ```bash
 python -m pip install -e ".[dev]"
-pytest            # 115 tests
+pytest            # 119 tests
 ruff check src tests
 mypy src          # clean; the package ships a py.typed marker
 ```
