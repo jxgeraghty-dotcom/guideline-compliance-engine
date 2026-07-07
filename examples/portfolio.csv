@@ -1,0 +1,22 @@
+security_id,issuer,sector,asset_class,market_value,rating,duration,currency
+912828A26,US Treasury,Government,Fixed Income,12000000,AA+,1.9,USD
+91282CJ35,US Treasury,Government,Fixed Income,10000000,AA+,8.5,USD
+91282CGT8,US Treasury,Government,Fixed Income,15000000,AA+,5.5,USD
+912797KL5,US Treasury,Government,Fixed Income,4500000,AA+,7.0,USD
+3130ABCD1,Federal Home Loan Bank,Government,Fixed Income,6000000,AA+,6.0,USD
+46625HRL6,JPMorgan Chase,Financials,Fixed Income,6000000,A-,5.2,USD
+06051GHF9,Bank of America,Financials,Fixed Income,4500000,A-,4.8,USD
+38141GXH2,Goldman Sachs,Financials,Fixed Income,4000000,BBB+,6.1,USD
+172967MQ4,Citigroup,Financials,Fixed Income,4000000,BBB+,5.5,USD
+61761JZM8,Morgan Stanley,Financials,Fixed Income,3000000,BBB,5.0,USD
+097023CY9,Boeing,Industrials,Fixed Income,3000000,BBB-,7.2,USD
+149123CB8,Caterpillar,Industrials,Fixed Income,3000000,A,6.5,USD
+MERIDPP01,Meridian Logistics,Industrials,Fixed Income,1500000,NR,4.5,USD
+26442CAK9,Duke Energy,Utilities,Fixed Income,3500000,BBB+,9.0,USD
+842587CX7,Southern Company,Utilities,Fixed Income,3000000,BBB,8.0,USD
+037833EK8,Apple,Technology,Fixed Income,4000000,AA+,6.0,USD
+68389XBK0,Oracle,Technology,Fixed Income,3000000,BBB,7.5,USD
+674599CL9,Occidental Petroleum,Energy,Fixed Income,3000000,BB+,4.0,USD
+893830BF2,Transocean,Energy,Fixed Income,2500000,B,3.5,USD
+50077LBA9,Kraft Heinz,Consumer Staples,Fixed Income,3000000,BBB-,6.8,USD
+345397C60,Ford Motor Credit,Consumer Cyclical,Fixed Income,1500000,BB+,3.0,USD

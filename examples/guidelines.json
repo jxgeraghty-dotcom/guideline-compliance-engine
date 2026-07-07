@@ -1,0 +1,38 @@
+{
+  "portfolio_name": "USD Investment Grade Aggregate — Account 10042",
+  "guidelines": [
+    {
+      "id": "ISSUER-CONC-01",
+      "type": "issuer_concentration",
+      "description": "No more than 5% of market value in any single non-government issuer.",
+      "max_weight": 0.05,
+      "warn_at": 0.045,
+      "exempt_sectors": ["Government"]
+    },
+    {
+      "id": "CREDIT-FLOOR-01",
+      "type": "credit_floor",
+      "description": "Minimum issue rating of BBB-; up to 5% may be held below investment grade.",
+      "min_rating": "BBB-",
+      "max_below_weight": 0.05,
+      "warn_at": 0.045,
+      "treat_unrated_as": "warn"
+    },
+    {
+      "id": "DURATION-BAND-01",
+      "type": "duration_band",
+      "description": "Portfolio effective duration within the 3.0-7.0 year band (benchmark +/- 2 yrs).",
+      "min_duration": 3.0,
+      "max_duration": 7.0,
+      "warn_buffer": 0.5
+    },
+    {
+      "id": "SECTOR-CAP-01",
+      "type": "sector_cap",
+      "description": "Max 25% per sector; Financials capped at 20%, Government permitted to 55%.",
+      "max_weight": 0.25,
+      "warn_ratio": 0.9,
+      "overrides": { "Financials": 0.20, "Government": 0.55 }
+    }
+  ]
+}
