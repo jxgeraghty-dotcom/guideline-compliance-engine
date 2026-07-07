@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from compliance.batch import run_manifest
 from compliance.engine import ComplianceEngine
-from compliance.loaders import LoaderError, load_manifest
+from compliance.loaders import LoaderError, load_manifest, load_portfolio
 from compliance.rules.base import create_rule
 from compliance.rules.issuer_concentration import IssuerConcentrationRule
 from compliance.validation import reject_unknown_keys
@@ -136,3 +137,45 @@ def test_manifest_account_missing_required_becomes_account_error():
 def test_valid_manifest_still_loads():
     manifest = load_manifest(EXAMPLES / "accounts.yaml")
     assert len(manifest["accounts"]) == 3
+
+
+# --------------------------------------------------------------------------- #
+# JSON portfolio documents
+# --------------------------------------------------------------------------- #
+
+def _write_portfolio(tmp_path, payload) -> Path:
+    path = tmp_path / "p.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_json_position_unknown_key_is_rejected(tmp_path):
+    # 'underlying_isuer' would silently drop the look-through attribution.
+    path = _write_portfolio(tmp_path, {
+        "positions": [
+            {"security_id": "A", "issuer": "A Co", "market_value": 100,
+             "underlying_isuer": "RiskCo"},
+        ]
+    })
+    with pytest.raises(LoaderError) as exc:
+        load_portfolio(path)
+    assert "underlying_issuer" in str(exc.value)
+
+
+def test_json_portfolio_unknown_top_level_key_is_rejected(tmp_path):
+    path = _write_portfolio(tmp_path, {"fx_rate": {"EUR": 1.1}, "positions": []})
+    with pytest.raises(LoaderError) as exc:
+        load_portfolio(path)
+    assert "fx_rates" in str(exc.value)
+
+
+def test_json_position_metadata_block_is_allowed(tmp_path):
+    path = _write_portfolio(tmp_path, {
+        "positions": [
+            {"security_id": "A", "issuer": "A Co", "market_value": 100,
+             "metadata": {"lot": 42}},
+        ],
+        "metadata": {"source": "custodian feed"},
+    })
+    portfolio = load_portfolio(path)
+    assert portfolio.position_count == 1

@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from compliance.models import Portfolio, Severity
-from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.rules.base import Finding, Rule, RuleResult, pct, register_rule
 from compliance.tolerance import below, exceeds
 
 
@@ -56,13 +56,15 @@ class DurationBandRule(Rule):
             p for p in portfolio.positions
             if p.duration is None and p.asset_class.lower().startswith("fixed")
         ]
-        missing_weight = sum(basis(p) for p in missing) / nav if nav else 0.0
+        # Magnitudes, not signed values: a short overlay with no duration is
+        # still uncovered exposure and must not offset a long one.
+        missing_weight = sum(abs(basis(p)) for p in missing) / nav if nav else 0.0
         if missing_weight > 0:
             findings.append(
                 Finding(
                     subject="duration coverage",
                     message=(
-                        f"{_pct(missing_weight)} of fixed-income holdings have no "
+                        f"{pct(missing_weight)} of fixed-income holdings have no "
                         f"duration; reported duration may be understated."
                     ),
                     severity=Severity.WARN,
@@ -117,7 +119,3 @@ class DurationBandRule(Rule):
             "look_through": self.look_through,
         }
         return self._new_result(findings, metrics)
-
-
-def _pct(value: float) -> str:
-    return f"{value * 100:.2f}%"

@@ -4,6 +4,7 @@ list and waivers."""
 from __future__ import annotations
 
 import pytest
+from conftest import pos
 
 from compliance import ratings
 from compliance.engine import ComplianceEngine
@@ -13,8 +14,6 @@ from compliance.rules.issuer_concentration import IssuerConcentrationRule
 from compliance.rules.restricted_list import RestrictedListRule
 from compliance.tolerance import at_least, below, exceeds
 from compliance.waivers import Waiver
-from conftest import pos
-
 
 # --------------------------------------------------------------------------- #
 # Boundary tolerance

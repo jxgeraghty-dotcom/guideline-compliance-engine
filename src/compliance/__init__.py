@@ -13,6 +13,8 @@ from compliance.report import ComplianceReport
 from compliance.rules.base import Finding, Rule, RuleResult, available_rule_types, create_rule
 from compliance.waivers import Waiver
 
+# Single source of truth for the version; pyproject.toml reads it at build
+# time via [tool.setuptools.dynamic].
 __version__ = "0.3.0"
 
 __all__ = [

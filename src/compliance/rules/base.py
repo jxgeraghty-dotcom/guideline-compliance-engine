@@ -19,6 +19,11 @@ from compliance.models import Portfolio, Severity
 from compliance.validation import reject_unknown_keys
 
 
+def pct(value: float) -> str:
+    """Format a weight fraction as a percentage for finding messages."""
+    return f"{value * 100:.2f}%"
+
+
 @dataclass
 class Finding:
     """A single observation produced by a rule.

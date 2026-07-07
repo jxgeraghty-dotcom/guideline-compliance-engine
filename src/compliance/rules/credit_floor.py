@@ -17,7 +17,7 @@ from typing import Any
 
 from compliance import ratings
 from compliance.models import Portfolio, Severity
-from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.rules.base import Finding, Rule, RuleResult, pct, register_rule
 from compliance.tolerance import at_least, exceeds
 
 _UNRATED_SEVERITY = {
@@ -140,13 +140,13 @@ class CreditFloorRule(Rule):
         if exceeds(below_weight, allowance):
             if allowance <= 0:
                 message = (
-                    f"{_pct(below_weight)} held below the {self.min_rating} floor "
+                    f"{pct(below_weight)} held below the {self.min_rating} floor "
                     f"(no allowance): {names}."
                 )
             else:
                 message = (
-                    f"{_pct(below_weight)} below the {self.min_rating} floor exceeds "
-                    f"the {_pct(allowance)} allowance (+{_pct(below_weight - allowance)}): "
+                    f"{pct(below_weight)} below the {self.min_rating} floor exceeds "
+                    f"the {pct(allowance)} allowance (+{pct(below_weight - allowance)}): "
                     f"{names}."
                 )
             return Finding(
@@ -161,8 +161,8 @@ class CreditFloorRule(Rule):
             return Finding(
                 subject=f"below {self.min_rating}",
                 message=(
-                    f"{_pct(below_weight)} below the {self.min_rating} floor, "
-                    f"approaching the {_pct(allowance)} allowance: {names}."
+                    f"{pct(below_weight)} below the {self.min_rating} floor, "
+                    f"approaching the {pct(allowance)} allowance: {names}."
                 ),
                 severity=Severity.WARN,
                 observed=below_weight,
@@ -171,13 +171,9 @@ class CreditFloorRule(Rule):
             )
         return Finding(
             subject=f"below {self.min_rating}",
-            message=f"{_pct(below_weight)} held below the {self.min_rating} floor.",
+            message=f"{pct(below_weight)} held below the {self.min_rating} floor.",
             severity=Severity.PASS,
             observed=below_weight,
             limit=allowance,
             metric="weight",
         )
-
-
-def _pct(value: float) -> str:
-    return f"{value * 100:.2f}%"

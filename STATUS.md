@@ -24,12 +24,13 @@ signal for governance/stewardship and GIPS/compliance work.
 Working, green, and published. The engine is feature-complete for the scope
 defined so far.
 
-- **Quality gates:** 119 tests passing; `ruff` clean; `mypy` clean (the package
+- **Quality gates:** 129 tests passing; `ruff` clean; `mypy` clean (the package
   ships a `py.typed` marker). GitHub Actions CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
   runs lint + types + tests on Python 3.10–3.12 and asserts the exit-code gate.
 - **Rules (6):** `issuer_concentration`, `credit_floor`, `duration_band`,
   `sector_cap`, `currency_exposure`, `restricted_list`.
-- **Cross-cutting capabilities:** multi-currency exposure (FX to base),
+- **Cross-cutting capabilities:** multi-currency exposure (FX to base,
+  hedge-aware via currency look-through),
   derivatives look-through (notional → underlying), ultimate-parent
   aggregation, net/gross netting, waivers (approved exceptions →
   `ACKNOWLEDGED`, re-breach on expiry), multi-agency rating basis
@@ -117,7 +118,7 @@ defined so far.
   `restricted_names.txt` (waivers, rating basis, restricted list).
 - Batch: `accounts.yaml`.
 
-**Tests** — `tests/` (119): `test_ratings`, `test_rules`,
+**Tests** — `tests/` (129): `test_ratings`, `test_rules`,
 `test_engine_and_report`, `test_loaders_and_cli`, `test_v2_features`,
 `test_v2_loaders_cli`, `test_v3_features`, `test_v3_batch_cli`,
 `test_config_validation`, `test_golden` (+ `golden/` snapshots), `conftest.py`.

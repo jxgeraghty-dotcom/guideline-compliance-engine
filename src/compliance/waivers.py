@@ -38,7 +38,7 @@ class Waiver:
     expires: str | None = None  # ISO date (YYYY-MM-DD)
 
     @classmethod
-    def from_config(cls, config: dict[str, Any]) -> "Waiver":
+    def from_config(cls, config: dict[str, Any]) -> Waiver:
         reject_unknown_keys(
             f"Waiver for {config.get('rule')!r}", config, _WAIVER_KEYS
         )

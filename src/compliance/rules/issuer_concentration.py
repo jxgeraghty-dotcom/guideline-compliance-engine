@@ -13,10 +13,11 @@ than 5% in one name" IMA guideline. Supports:
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from compliance.models import Portfolio, Position, Severity
-from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.rules.base import Finding, Rule, RuleResult, pct, register_rule
 from compliance.tolerance import at_least, exceeds
 
 _LEVELS = {"issuer", "ultimate_parent"}
@@ -85,6 +86,11 @@ class IssuerConcentrationRule(Rule):
         if not self.exempt_sectors:
             return False
         # Exempt only if *every* constituent holding sits in an exempt sector.
+        # Under look-through the exposure is attributed to the underlying, so
+        # the exemption must follow the underlying's sector (a CDS referencing
+        # a sovereign is sovereign risk, whatever the contract's own sector).
+        if self.look_through:
+            return all(p.risk_sector in self.exempt_sectors for p in constituents)
         return all(p.sector in self.exempt_sectors for p in constituents)
 
     def _value_fn(self, portfolio: Portfolio) -> Callable[[Position], float]:
@@ -122,8 +128,8 @@ class IssuerConcentrationRule(Rule):
                     Finding(
                         subject=name,
                         message=(
-                            f"{name} is {_pct(weight)} of the portfolio, over the "
-                            f"{_pct(limit)} issuer limit (+{_pct(weight - limit)}){rolls_up}."
+                            f"{name} is {pct(weight)} of the portfolio, over the "
+                            f"{pct(limit)} issuer limit (+{pct(weight - limit)}){rolls_up}."
                         ),
                         severity=Severity.BREACH,
                         observed=weight,
@@ -136,8 +142,8 @@ class IssuerConcentrationRule(Rule):
                     Finding(
                         subject=name,
                         message=(
-                            f"{name} is {_pct(weight)} of the portfolio, approaching "
-                            f"the {_pct(limit)} issuer limit{rolls_up}."
+                            f"{name} is {pct(weight)} of the portfolio, approaching "
+                            f"the {pct(limit)} issuer limit{rolls_up}."
                         ),
                         severity=Severity.WARN,
                         observed=weight,
@@ -163,7 +169,3 @@ class IssuerConcentrationRule(Rule):
             return ""
         issuers = sorted({p.issuer for p in constituents if p.issuer != name})
         return f" [rolls up: {', '.join(issuers)}]" if issuers else ""
-
-
-def _pct(value: float) -> str:
-    return f"{value * 100:.2f}%"

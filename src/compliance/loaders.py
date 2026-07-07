@@ -9,18 +9,38 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Sequence
+from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
-from compliance.models import Portfolio, Position
+from compliance.models import Portfolio, Position, Severity
 from compliance.validation import reject_unknown_keys
 
 #: Recognised top-level keys of a batch manifest.
 _MANIFEST_KEYS = frozenset({"accounts", "name", "description", "metadata"})
 
+#: Recognised top-level keys of a JSON portfolio document.
+_PORTFOLIO_DOCUMENT_KEYS = frozenset(
+    {"name", "base_currency", "as_of", "fx_rates", "positions", "metadata"}
+)
+
+#: Recognised keys of a JSON position entry: the Position fields themselves,
+#: plus a free-form ``metadata`` escape hatch. Derived from the dataclass so
+#: the schema can never drift from the model.
+_POSITION_KEYS = frozenset(f.name for f in dataclass_fields(Position)) | {"metadata"}
+
 
 class LoaderError(Exception):
     """Raised when input data cannot be parsed into the domain model."""
+
+
+def _reject_unknown(context: str, mapping: dict[str, Any], allowed: frozenset[str]) -> None:
+    """Strict key validation, surfaced as a :class:`LoaderError`."""
+    try:
+        reject_unknown_keys(context, mapping, allowed)
+    except ValueError as exc:
+        raise LoaderError(str(exc)) from exc
 
 
 # Accepted CSV headers -> Position field. Extra columns are ignored.
@@ -156,13 +176,18 @@ def _load_portfolio_json(path: Path) -> Portfolio:
         raw_positions = data
         meta: dict[str, Any] = {}
     elif isinstance(data, dict):
+        _reject_unknown(f"Portfolio JSON {path.name}", data, _PORTFOLIO_DOCUMENT_KEYS)
         raw_positions = data.get("positions", [])
         meta = data
     else:
         raise LoaderError(f"Portfolio JSON {path} must be an object or a list.")
-    positions = [
-        _build_position(p, f"{path}[{i}]") for i, p in enumerate(raw_positions)
-    ]
+    positions = []
+    for i, p in enumerate(raw_positions):
+        where = f"{path}[{i}]"
+        if not isinstance(p, dict):
+            raise LoaderError(f"{where}: position entry must be a mapping.")
+        _reject_unknown(where, p, _POSITION_KEYS)
+        positions.append(_build_position(p, where))
     fx_rates = normalize_fx_rates(meta.get("fx_rates") or {})
     return Portfolio(
         name=str(meta.get("name") or path.stem),
@@ -279,7 +304,40 @@ def load_report_json(path: str | Path) -> dict[str, Any]:
             f"Baseline report {path} does not look like a report JSON (missing "
             f"'results'). Generate one with '-f json -o baseline.json'."
         )
+    _validate_baseline_results(data["results"], path)
     return data
+
+
+def _validate_baseline_results(results: Any, path: Path) -> None:
+    """Check the shape the comparison relies on, so a hand-edited or truncated
+    baseline fails with a clear message instead of a KeyError mid-diff."""
+    if not isinstance(results, list):
+        raise LoaderError(f"Baseline report {path}: 'results' must be a list.")
+    severities = set(Severity.__members__)
+    for i, result in enumerate(results):
+        where = f"Baseline report {path}: results[{i}]"
+        if not isinstance(result, dict):
+            raise LoaderError(f"{where} must be a mapping.")
+        if not isinstance(result.get("rule_id"), str):
+            raise LoaderError(f"{where} is missing a 'rule_id' string.")
+        if result.get("severity") not in severities:
+            raise LoaderError(
+                f"{where} ({result['rule_id']}) has an invalid 'severity' "
+                f"{result.get('severity')!r}; expected one of {sorted(severities)}."
+            )
+        findings = result.get("findings")
+        if not isinstance(findings, list):
+            raise LoaderError(f"{where} ({result['rule_id']}) is missing a 'findings' list.")
+        for j, finding in enumerate(findings):
+            if (
+                not isinstance(finding, dict)
+                or not isinstance(finding.get("subject"), str)
+                or finding.get("severity") not in severities
+            ):
+                raise LoaderError(
+                    f"{where} ({result['rule_id']}) finding [{j}] needs a 'subject' "
+                    f"string and a valid 'severity'."
+                )
 
 
 def load_name_list(path: str | Path) -> list[str]:
@@ -342,8 +400,5 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         )
     if not isinstance(data, dict) or not isinstance(data.get("accounts"), list):
         raise LoaderError(f"Manifest {path} must contain an 'accounts' list.")
-    try:
-        reject_unknown_keys(f"Manifest {path.name}", data, _MANIFEST_KEYS)
-    except ValueError as exc:
-        raise LoaderError(str(exc)) from exc
+    _reject_unknown(f"Manifest {path.name}", data, _MANIFEST_KEYS)
     return data

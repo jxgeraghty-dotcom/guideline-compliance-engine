@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guideline-compliance-engine"
-version = "0.3.0"
+dynamic = ["version"]
 description = "A rules engine that checks a portfolio against IMA-style investment guidelines and produces a severity-tagged compliance report."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,6 +22,9 @@ compliance-check = "compliance.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.dynamic]
+version = { attr = "compliance.__version__" }
+
 [tool.setuptools.package-data]
 compliance = ["py.typed"]
 
@@ -32,6 +35,9 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
 [tool.mypy]
 python_version = "3.10"

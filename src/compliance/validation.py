@@ -11,7 +11,7 @@ suggestion for near-misses.
 from __future__ import annotations
 
 import difflib
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def reject_unknown_keys(context: str, keys: Iterable[str], allowed: Iterable[str]) -> None:

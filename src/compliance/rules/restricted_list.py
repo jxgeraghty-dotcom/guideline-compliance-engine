@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from compliance.models import Portfolio, Position, Severity
-from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.rules.base import Finding, Rule, RuleResult, pct, register_rule
 
 _SEVERITIES = {"breach": Severity.BREACH, "warn": Severity.WARN}
 
@@ -85,7 +85,7 @@ class RestrictedListRule(Rule):
                     subject=name,
                     message=(
                         f"Restricted name {name!r} held via {securities} "
-                        f"({_pct(weight)} of the portfolio)."
+                        f"({pct(weight)} of the portfolio)."
                     ),
                     severity=self.severity,
                     observed=weight,
@@ -98,7 +98,3 @@ class RestrictedListRule(Rule):
             "hits": sorted(hits),
         }
         return self._new_result(findings, metrics)
-
-
-def _pct(value: float) -> str:
-    return f"{value * 100:.2f}%"

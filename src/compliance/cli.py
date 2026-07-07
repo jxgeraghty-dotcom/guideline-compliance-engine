@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from compliance import __version__
 from compliance.batch import evaluate_account, run_manifest
@@ -76,7 +77,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="breach",
         help="Severity that yields a non-zero exit code (default: breach).",
     )
-    check.add_argument("--no-color", action="store_true", help="Disable ANSI colour in text output.")
+    check.add_argument(
+        "--no-color", action="store_true", help="Disable ANSI colour in text output."
+    )
     check.set_defaults(func=_cmd_check)
 
     batch = sub.add_parser(
@@ -197,7 +200,12 @@ def _safe_print(text: str) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except Exception:  # noqa: BLE001 - keep exit codes meaningful for CI gates
+        # An unexpected crash must not exit 1 — that code means "breach found".
+        traceback.print_exc()
+        return EXIT_ERROR
 
 
 if __name__ == "__main__":  # pragma: no cover

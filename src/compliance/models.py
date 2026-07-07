@@ -17,9 +17,9 @@ Two economic concepts underpin the guideline rules:
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Callable, Iterable
 
 #: Instrument types treated as derivatives for look-through and sign handling.
 DERIVATIVE_TYPES = frozenset(

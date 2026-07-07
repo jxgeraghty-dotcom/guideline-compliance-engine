@@ -9,10 +9,11 @@ underlying sector rather than its (small) market value.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from compliance.models import Portfolio, Position, Severity
-from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.rules.base import Finding, Rule, RuleResult, pct, register_rule
 from compliance.tolerance import at_least, below, exceeds
 
 _NETTING = {"net", "gross"}
@@ -74,8 +75,8 @@ class SectorCapRule(Rule):
                     Finding(
                         subject=sector,
                         message=(
-                            f"{sector} is {_pct(weight)} of the portfolio, over the "
-                            f"{_pct(cap)} sector cap (+{_pct(weight - cap)})."
+                            f"{sector} is {pct(weight)} of the portfolio, over the "
+                            f"{pct(cap)} sector cap (+{pct(weight - cap)})."
                         ),
                         severity=Severity.BREACH,
                         observed=weight,
@@ -88,8 +89,8 @@ class SectorCapRule(Rule):
                     Finding(
                         subject=sector,
                         message=(
-                            f"{sector} is {_pct(weight)} of the portfolio, approaching "
-                            f"the {_pct(cap)} sector cap."
+                            f"{sector} is {pct(weight)} of the portfolio, approaching "
+                            f"the {pct(cap)} sector cap."
                         ),
                         severity=Severity.WARN,
                         observed=weight,
@@ -106,8 +107,8 @@ class SectorCapRule(Rule):
                     Finding(
                         subject=sector,
                         message=(
-                            f"{sector} is {_pct(weight)} of the portfolio, below the "
-                            f"{_pct(floor)} minimum ({_pct(floor - weight)} short)."
+                            f"{sector} is {pct(weight)} of the portfolio, below the "
+                            f"{pct(floor)} minimum ({pct(floor - weight)} short)."
                         ),
                         severity=Severity.BREACH,
                         observed=weight,
@@ -126,7 +127,3 @@ class SectorCapRule(Rule):
             ),
         }
         return self._new_result(findings, metrics)
-
-
-def _pct(value: float) -> str:
-    return f"{value * 100:.2f}%"

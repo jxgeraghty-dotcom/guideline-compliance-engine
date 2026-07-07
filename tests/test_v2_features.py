@@ -4,6 +4,7 @@ and baseline comparison."""
 from __future__ import annotations
 
 import pytest
+from conftest import pos
 
 from compliance.compare import compare_reports
 from compliance.engine import ComplianceEngine
@@ -13,8 +14,6 @@ from compliance.rules.currency_exposure import CurrencyExposureRule
 from compliance.rules.duration_band import DurationBandRule
 from compliance.rules.issuer_concentration import IssuerConcentrationRule
 from compliance.rules.sector_cap import SectorCapRule
-from conftest import pos
-
 
 # --------------------------------------------------------------------------- #
 # Multi-currency model
@@ -124,6 +123,28 @@ def test_issuer_look_through_attributes_notional_to_reference():
     assert result.breaches()[0].subject == "RiskCo"
 
 
+def test_issuer_look_through_exemption_follows_underlying_sector():
+    # A CDS referencing a sovereign is sovereign risk: with look-through on,
+    # a Government sector exemption must follow the underlying's sector, not
+    # the contract's own book sector.
+    book = Portfolio(
+        name="p",
+        positions=[
+            pos("G", "US Treasury", 90, sector="Government"),
+            pos(
+                "CDS", "CDS Desk", 1, sector="Credit", instrument_type="cds",
+                notional=20, underlying_issuer="Bundesrepublik Deutschland",
+                underlying_sector="Government",
+            ),
+        ],
+    )
+    rule = IssuerConcentrationRule(
+        {"max_weight": 0.05, "exempt_sectors": ["Government"], "look_through": True}
+    )
+    # ~22% attributed to the German sovereign, but sovereigns are exempt.
+    assert rule.evaluate(book).severity == Severity.PASS
+
+
 def test_credit_look_through_counts_notional_below_floor():
     book = _cds_book(rating="CCC")
     off = CreditFloorRule({"min_rating": "BBB-", "max_below_weight": 0.05})
@@ -198,6 +219,68 @@ def test_currency_exposure_per_currency_and_aggregate():
     # the base currency is never itself flagged
     assert "USD" not in subjects
     assert result.metrics["foreign_weight"] == pytest.approx(0.20)
+
+
+def _hedged_book(hedge_notional: float) -> Portfolio:
+    """60% USD, 40% EUR cash, plus an FX forward selling EUR against the base
+    (booked as a short-notional EUR position with a ~zero mark)."""
+    return Portfolio(
+        name="p",
+        base_currency="USD",
+        fx_rates={"EUR": 1.0},
+        positions=[
+            pos("U", "Dollar Co", 60, currency="USD"),
+            pos("E", "Euro Co", 40, currency="EUR"),
+            pos("H", "FX Desk", 0, currency="EUR", instrument_type="forward",
+                notional=hedge_notional),
+        ],
+    )
+
+
+def test_currency_look_through_lets_fx_hedge_net_exposure_down():
+    book = _hedged_book(-35)
+    off = CurrencyExposureRule({"max_per_currency": 0.10}).evaluate(book)
+    assert off.severity == Severity.BREACH  # 40% EUR on an unhedged (MV) basis
+
+    on = CurrencyExposureRule(
+        {"max_per_currency": 0.10, "look_through": True}
+    ).evaluate(book)
+    assert on.severity == Severity.PASS     # 40 - 35 = 5% net EUR
+    assert on.metrics["foreign_weight"] == pytest.approx(0.05)
+
+
+def test_currency_gross_netting_ignores_the_hedge():
+    result = CurrencyExposureRule(
+        {"max_per_currency": 0.10, "look_through": True, "netting": "gross"}
+    ).evaluate(_hedged_book(-35))
+    assert result.severity == Severity.BREACH
+    assert result.breaches()[0].observed == pytest.approx(0.75)  # 40 + |-35|
+
+
+def test_currency_over_hedge_counts_as_short_exposure():
+    result = CurrencyExposureRule(
+        {"max_per_currency": 0.10, "look_through": True}
+    ).evaluate(_hedged_book(-60))
+    breach = result.breaches()[0]
+    assert breach.observed == pytest.approx(0.20)  # |40 - 60| net short
+    assert "net short" in breach.message
+
+
+def test_duration_missing_coverage_counts_short_overlays():
+    # A short overlay with no duration is uncovered exposure; its sign must
+    # not net the coverage gap down.
+    book = Portfolio(
+        name="p",
+        positions=[
+            pos("B", "BondCo", 100, duration=5.0),
+            pos("F", "FutCo", 0, instrument_type="future", notional=-50),
+        ],
+    )
+    result = DurationBandRule(
+        {"min_duration": 0.0, "max_duration": 10.0, "look_through": True}
+    ).evaluate(book)
+    data = [f for f in result.findings if f.category == "DATA"]
+    assert data and data[0].observed == pytest.approx(0.5)
 
 
 # --------------------------------------------------------------------------- #

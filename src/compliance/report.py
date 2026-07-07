@@ -78,6 +78,7 @@ class ComplianceReport:
         return sum(1 for r in self.results if r.severity == Severity.BREACH)
 
     def to_dict(self) -> dict[str, Any]:
+        counts = self.counts()  # one walk over the findings, reused below
         return {
             "portfolio_name": self.portfolio_name,
             "base_currency": self.base_currency,
@@ -91,10 +92,10 @@ class ComplianceReport:
             "summary": {
                 "rules_evaluated": len(self.results),
                 "rules_breached": self.breached_rule_count(),
-                "breaches": self.breach_count(),
-                "warnings": self.warn_count(),
-                "acknowledged": self.acknowledged_count(),
-                "finding_counts": self.counts(),
+                "breaches": counts[Severity.BREACH.name],
+                "warnings": counts[Severity.WARN.name],
+                "acknowledged": counts[Severity.ACKNOWLEDGED.name],
+                "finding_counts": counts,
             },
             "results": [r.to_dict() for r in self.results],
         }
@@ -163,7 +164,7 @@ def render_text(
     *,
     color: bool | None = None,
     stream: TextIO | None = None,
-    comparison: "ReportComparison | None" = None,
+    comparison: ReportComparison | None = None,
 ) -> str:
     """Render a coloured, human-readable report."""
     stream = stream or sys.stdout
@@ -210,7 +211,8 @@ def render_text(
         if result.severity == Severity.PASS and not result.findings:
             summary = _pass_summary(result)
             if summary:
-                lines.append(paint(f"         {summary}", _DIM) if use_color else f"         {summary}")
+                text = f"         {summary}"
+                lines.append(paint(text, _DIM) if use_color else text)
         lines.append("")
 
     if comparison is not None:
@@ -280,7 +282,7 @@ def render_json(
     report: ComplianceReport,
     *,
     indent: int = 2,
-    comparison: "ReportComparison | None" = None,
+    comparison: ReportComparison | None = None,
 ) -> str:
     """Render the report as a JSON document."""
     payload = report.to_dict()
@@ -292,7 +294,7 @@ def render_json(
 def render_html(
     report: ComplianceReport,
     *,
-    comparison: "ReportComparison | None" = None,
+    comparison: ReportComparison | None = None,
 ) -> str:
     """Render a standalone, styled HTML report."""
     css_class = _CSS_CLASS
@@ -484,7 +486,7 @@ def _truncate(text: str, width: int) -> str:
 
 
 def render_batch_text(
-    batch: "BatchResult",
+    batch: BatchResult,
     *,
     color: bool | None = None,
     stream: TextIO | None = None,
@@ -526,11 +528,11 @@ def render_batch_text(
     return "\n".join(lines)
 
 
-def render_batch_json(batch: "BatchResult", *, indent: int = 2) -> str:
+def render_batch_json(batch: BatchResult, *, indent: int = 2) -> str:
     return json.dumps(batch.to_dict(), indent=indent)
 
 
-def render_batch_html(batch: "BatchResult") -> str:
+def render_batch_html(batch: BatchResult) -> str:
     """Render a compact standalone batch dashboard."""
     rows = []
     for r in batch.results:

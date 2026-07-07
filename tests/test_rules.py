@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from conftest import pos
 
 from compliance.models import Portfolio, Severity
 from compliance.rules.base import create_rule
@@ -10,8 +11,6 @@ from compliance.rules.credit_floor import CreditFloorRule
 from compliance.rules.duration_band import DurationBandRule
 from compliance.rules.issuer_concentration import IssuerConcentrationRule
 from compliance.rules.sector_cap import SectorCapRule
-from conftest import pos
-
 
 # --------------------------------------------------------------------------- #
 # Issuer concentration

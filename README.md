@@ -161,7 +161,7 @@ rule keyed by `type`. See [`examples/guidelines.yaml`](examples/guidelines.yaml)
 | `credit_floor`          | Minimum rating; policed below-floor (high-yield) bucket      | `min_rating`, `max_below_weight`, `warn_at`, `treat_unrated_as`, `look_through`, `rating_basis` |
 | `duration_band`         | Portfolio effective duration within a `[min, max]` band      | `min_duration`, `max_duration`, `warn_buffer`, `look_through` |
 | `sector_cap`            | Max (and optional min) weight per sector                     | `max_weight`, `overrides`, `floors`, `warn_ratio`, `look_through`, `netting` |
-| `currency_exposure`     | Cap per-currency and aggregate non-base exposure            | `max_per_currency`, `overrides`, `max_aggregate_foreign`, `warn_ratio` |
+| `currency_exposure`     | Cap per-currency and aggregate non-base exposure            | `max_per_currency`, `overrides`, `max_aggregate_foreign`, `warn_ratio`, `look_through`, `netting` |
 | `restricted_list`       | Screen issuer/parent/reference-entity against a name list   | `names`, `file`, `severity` |
 
 Every rule shares `id` and `description`. Numeric limits are **fractions**
@@ -185,6 +185,11 @@ Every rule shares `id` and `description`. Numeric limits are **fractions**
 - **Currency exposure** caps any single non-base currency (`max_per_currency`,
   per-currency `overrides`) and the aggregate non-base weight
   (`max_aggregate_foreign`), all measured after FX conversion to base currency.
+  With `look_through: true` the rule measures **hedged** exposure: an FX forward
+  booked as a short-notional position in the hedged currency nets that
+  currency's exposure down (the basis most IMAs allow). An over-hedged currency
+  nets short and still counts at its magnitude; `netting: gross` disables the
+  offset for mandates that cap gross exposure.
 
 ### Advanced controls
 

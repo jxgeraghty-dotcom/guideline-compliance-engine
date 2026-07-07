@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 
 import pytest
+from conftest import pos
 
 from compliance.engine import ComplianceEngine
 from compliance.models import Portfolio, Severity
 from compliance.report import render_html, render_json, render_text
 from compliance.rules.base import Rule, register_rule
-from conftest import pos
 
 GUIDELINES = {
     "guidelines": [

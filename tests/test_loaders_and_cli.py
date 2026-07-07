@@ -130,6 +130,23 @@ def test_cli_bad_portfolio_exits_2(capsys):
     assert "error:" in capsys.readouterr().err
 
 
+def test_cli_unexpected_crash_exits_2(monkeypatch, capsys):
+    # Exit code 1 means "breach found"; an internal bug must exit 2 so a CI
+    # gate can tell a tooling failure from a compliance failure.
+    import compliance.cli as cli
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "evaluate_account", boom)
+    code = cli.main(
+        ["check", "-p", str(EXAMPLES / "portfolio.csv"),
+         "-g", str(EXAMPLES / "guidelines.json")]
+    )
+    assert code == 2
+    assert "boom" in capsys.readouterr().err
+
+
 def test_cli_list_rules(capsys):
     code = main(["list-rules"])
     out = capsys.readouterr().out

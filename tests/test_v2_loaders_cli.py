@@ -133,6 +133,23 @@ def test_cli_bad_baseline_exits_2(tmp_path, capsys):
     assert "does not look like a report" in capsys.readouterr().err
 
 
+def test_cli_malformed_baseline_results_exits_2(tmp_path, capsys):
+    # Structurally a report, but a results entry lacks the fields the diff
+    # relies on: must be a clean input error (exit 2), not a KeyError crash.
+    bad = tmp_path / "baseline.json"
+    bad.write_text(json.dumps({"results": [{"rule_id": "R"}]}), encoding="utf-8")
+    code = main(
+        [
+            "check",
+            "-p", str(EXAMPLES / "portfolio.csv"),
+            "-g", str(EXAMPLES / "guidelines.json"),
+            "--baseline", str(bad),
+        ]
+    )
+    assert code == 2
+    assert "severity" in capsys.readouterr().err
+
+
 def test_cli_list_rules_includes_currency(capsys):
     main(["list-rules"])
     assert "currency_exposure" in capsys.readouterr().out
