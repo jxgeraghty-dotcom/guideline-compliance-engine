@@ -13,12 +13,23 @@ wire it into CI/pre-trade checks where a **non-zero exit code blocks on a
 breach**.
 
 Beyond the four core rules it also handles the details that make guideline
-monitoring realistic: **ultimate-parent aggregation** (measure a limit across
-a banking group's issuing entities), **multi-currency exposure** (FX-convert
-holdings to base currency and cap foreign-currency risk), **derivatives
-look-through** (attribute a CDS or future's notional to its underlying
-issuer/sector/duration, not its small market value), and **period-over-period
-comparison** against a prior report ("what newly breached since last night?").
+monitoring realistic:
+
+- **Ultimate-parent aggregation** — measure an issuer limit across a banking
+  group's issuing entities.
+- **Multi-currency exposure** — FX-convert holdings to base currency and cap
+  foreign-currency risk.
+- **Derivatives look-through** — attribute a CDS or future's notional to its
+  underlying issuer/sector/duration, not its small market value.
+- **Waivers / approved exceptions** — downgrade a breach to `ACKNOWLEDGED` under
+  a documented, time-boxed waiver; it re-breaches automatically once expired.
+- **Multi-agency rating basis** — combine S&P / Moody's / Fitch by
+  lower-of-two or median-of-three for the credit floor.
+- **Restricted-list screening** — flag any exposure to a sanctioned/prohibited
+  name (including via a parent or a derivative reference entity).
+- **Batch mode** — evaluate a whole book of accounts against their mandates.
+- **Period-over-period comparison** — diff against a prior report ("what newly
+  breached since last night?").
 
 ```text
 ==============================================================================
@@ -56,10 +67,11 @@ governance/stewardship. This engine keeps the **guidelines as data** (a YAML or
 JSON IMA definition) and the **checks as small, testable rules**, so a
 compliance analyst can express a mandate without touching Python and an engineer
 can add a new check without touching the mandate. The severity model
-(`PASS → INFO → WARN → BREACH`) mirrors how a monitoring desk triages: hard
-breaches escalate, soft/near-limit conditions get watched, and data-quality
-gaps ("this bond is unrated, we cannot certify it") are surfaced rather than
-silently ignored.
+(`PASS → INFO → ACKNOWLEDGED → WARN → BREACH`) mirrors how a monitoring desk
+triages: hard breaches escalate, soft/near-limit conditions get watched,
+data-quality gaps ("this bond is unrated, we cannot certify it") are surfaced
+rather than silently ignored, and breaches under an approved, unexpired waiver
+sit as `ACKNOWLEDGED` — visible, but not tripping the gate.
 
 ## Install
 
@@ -124,6 +136,7 @@ such as `cusip`/`isin`/`ticker` → `security_id`, `mv`/`value` → `market_valu
 | `sector`        | no       | Used for sector caps and issuer exemptions        |
 | `asset_class`   | no       | Defaults to `Fixed Income`                        |
 | `rating`        | no       | S&P/Fitch (`BBB-`) or Moody's (`Baa3`); `NR` = unrated |
+| `rating_sp` / `rating_moody` / `rating_fitch` | no | Per-agency ratings; combined via the credit floor's `rating_basis` |
 | `duration`      | no       | Effective duration in years                       |
 | `currency`      | no       | Defaults to `USD`; FX-converted to base via `fx_rates` |
 | `ultimate_parent` | no     | Roll several issuing entities up to one parent    |
@@ -144,11 +157,12 @@ rule keyed by `type`. See [`examples/guidelines.yaml`](examples/guidelines.yaml)
 
 | `type`                  | Checks                                                        | Key config |
 |-------------------------|--------------------------------------------------------------|------------|
-| `issuer_concentration`  | Max weight in any single issuer or parent group             | `max_weight`, `warn_at`, `overrides`, `exempt_sectors`, `exempt_issuers`, `level`, `look_through` |
-| `credit_floor`          | Minimum rating; policed below-floor (high-yield) bucket      | `min_rating`, `max_below_weight`, `warn_at`, `treat_unrated_as`, `look_through` |
+| `issuer_concentration`  | Max weight in any single issuer or parent group             | `max_weight`, `warn_at`, `overrides`, `exempt_sectors`, `exempt_issuers`, `level`, `look_through`, `netting` |
+| `credit_floor`          | Minimum rating; policed below-floor (high-yield) bucket      | `min_rating`, `max_below_weight`, `warn_at`, `treat_unrated_as`, `look_through`, `rating_basis` |
 | `duration_band`         | Portfolio effective duration within a `[min, max]` band      | `min_duration`, `max_duration`, `warn_buffer`, `look_through` |
-| `sector_cap`            | Max (and optional min) weight per sector                     | `max_weight`, `overrides`, `floors`, `warn_ratio`, `look_through` |
+| `sector_cap`            | Max (and optional min) weight per sector                     | `max_weight`, `overrides`, `floors`, `warn_ratio`, `look_through`, `netting` |
 | `currency_exposure`     | Cap per-currency and aggregate non-base exposure            | `max_per_currency`, `overrides`, `max_aggregate_foreign`, `warn_ratio` |
+| `restricted_list`       | Screen issuer/parent/reference-entity against a name list   | `names`, `file`, `severity` |
 
 Every rule shares `id` and `description`. Numeric limits are **fractions**
 (`0.05` = 5%). Highlights:
@@ -195,7 +209,63 @@ compliance-check check -p examples/portfolio_multi.csv -g examples/guidelines_mu
   derivative contributes its **notional** (attributed to `underlying_issuer` /
   `underlying_sector`) instead of its small mark. A single-name CDS then counts
   toward the reference entity's concentration and credit bucket; a bond future's
-  notional counts toward duration.
+  notional counts toward duration. Pair with `netting: gross` to stop a bought
+  hedge from netting concentration down (some mandates require gross exposure).
+
+## Governance controls
+
+The
+[`examples/portfolio_credit.json`](examples/portfolio_credit.json) /
+[`examples/guidelines_credit.yaml`](examples/guidelines_credit.yaml) pair shows
+the governance features together:
+
+```bash
+compliance-check check -p examples/portfolio_credit.json -g examples/guidelines_credit.yaml
+```
+
+**Waivers / approved exceptions.** A `waivers` block documents that a specific
+finding is a known, approved exception. While unexpired it downgrades the
+finding to `ACKNOWLEDGED` (visible, but it no longer trips the breach gate);
+once past `expires` it lapses and the finding re-breaches — a control cannot be
+silently switched off. Waivers that match nothing are flagged as possibly stale.
+Expiry is evaluated against the portfolio's `as_of` date (else today).
+
+```yaml
+waivers:
+  - rule: CREDIT-FLOOR-01
+    subject: "below BBB-"          # the finding's subject; omit to waive the whole rule
+    reason: "HY sleeve overweight from a downgrade; reduction plan approved"
+    approved_by: "R. Patel, CRO"
+    expires: "2026-12-31"
+```
+
+**Multi-agency rating basis.** Give holdings `rating_sp` / `rating_moody` /
+`rating_fitch` and set the credit floor's `rating_basis` to `lower` (worst — the
+usual IMA default), `higher`, or `median` (median-of-three / lower-of-two). In
+the example this drops Boeing (`BBB-` S&P, `Ba1` Moody's) below the floor under
+`lower`.
+
+**Restricted-list screening.** The `restricted_list` rule flags any holding
+whose issuer, ultimate parent or derivative reference entity appears on a
+sanctions/exclusion list — supplied inline (`names`) or from an external `file`
+(resolved relative to the guideline document).
+
+## Batch mode — a book of accounts
+
+Monitoring runs across many accounts. `check-batch` takes a manifest of
+`(portfolio, guidelines)` pairs and prints a one-row-per-account summary
+(text / JSON / HTML), staying resilient if a single account fails to load:
+
+```bash
+compliance-check check-batch -m examples/accounts.yaml
+```
+
+```text
+  ACCOUNT                           STATUS                          BR  WN   ACK
+  IG Aggregate - Acct 10042         NON-COMPLIANT                    3   2     0
+  Global Multi-Asset - Acct 20871   NON-COMPLIANT                    4   4     0
+  Corporate Credit - Acct 30015     NON-COMPLIANT                    1   0     1
+```
 
 ## Comparing against a baseline (as-of / look-back)
 
@@ -228,19 +298,23 @@ The comparison is included in the JSON and HTML outputs too. It matches rules by
 ```
 src/compliance/
 ├── models.py      # Position, Portfolio, Severity — I/O-free model (FX + exposure)
-├── ratings.py     # S&P/Moody's rating scale, notches, weighted-average rating
+├── ratings.py     # S&P/Moody's scale, notches, multi-agency effective rating
+├── tolerance.py   # explicit epsilon for boundary-safe limit comparisons
 ├── rules/
 │   ├── base.py    # Rule ABC, Finding, RuleResult, and the type registry
-│   ├── issuer_concentration.py   # + ultimate-parent, look-through
-│   ├── credit_floor.py           # + look-through
+│   ├── issuer_concentration.py   # + ultimate-parent, look-through, netting
+│   ├── credit_floor.py           # + look-through, multi-agency rating basis
 │   ├── duration_band.py          # + look-through
-│   ├── sector_cap.py             # + look-through
-│   └── currency_exposure.py
-├── engine.py      # builds rules from config, runs them, assembles the report
-├── report.py      # ComplianceReport + text / JSON / HTML renderers
+│   ├── sector_cap.py             # + look-through, netting
+│   ├── currency_exposure.py
+│   └── restricted_list.py        # sanctions / name screening
+├── waivers.py     # approved exceptions with expiry -> ACKNOWLEDGED
+├── engine.py      # builds rules + waivers from config, runs them
+├── report.py      # ComplianceReport + text / JSON / HTML renderers (+ batch)
 ├── compare.py     # as-of / look-back diff against a prior report
-├── loaders.py     # CSV/JSON portfolios (+ FX), YAML/JSON guidelines
-└── cli.py         # argparse CLI, exit-code gating, --baseline comparison
+├── batch.py       # book-of-accounts runner + shared single-account pipeline
+├── loaders.py     # CSV/JSON portfolios (+ FX), YAML/JSON guidelines, manifests
+└── cli.py         # argparse CLI: check, check-batch, list-rules
 ```
 
 Design choices worth calling out:
@@ -286,18 +360,23 @@ class MaxCashRule(Rule):
 Importing the module registers the rule; `type: max_cash` in a guideline file
 then just works.
 
-## Testing
+## Development
 
 ```bash
-python -m pytest
+python -m pip install -e ".[dev]"
+pytest            # 103 tests
+ruff check src tests
+mypy src          # clean; the package ships a py.typed marker
 ```
 
-70 tests cover the rating scale, each rule (breach / warn / exemption / data
-edge cases), FX conversion, ultimate-parent aggregation, derivatives
-look-through, the currency rule, baseline comparison, the engine (rollup,
-duplicate-id and error handling), the loaders, all three renderers, and the
-CLI's exit-code behaviour. The test config puts `src/` on the path, so the
-suite runs without an install.
+The suite covers the rating scale and multi-agency basis, every rule (breach /
+warn / exemption / boundary / data edge cases), FX conversion, ultimate-parent
+aggregation, look-through and netting, waivers (active / expired / stale),
+restricted-list screening, batch mode, baseline comparison, all renderers, and
+the CLI's exit-code behaviour — plus golden-file snapshots of the text/HTML
+output. `pytest` puts `src/` on the path, so it runs without an install.
+[CI](.github/workflows/ci.yml) runs lint, types and tests on Python 3.10–3.12
+and asserts the exit-code gate blocks a breach.
 
 ## Scope & assumptions
 
@@ -309,10 +388,13 @@ suite runs without an install.
 - Ratings map onto the S&P/Fitch scale; Moody's grades are normalised in.
 - Look-through uses a derivative's notional as its economic exposure (a
   first-order proxy); delta/DV01 adjustment is a natural refinement.
+- Restricted-name matching is exact after case-folding (a false positive on a
+  sanctions screen is disruptive); alias/fuzzy resolution is deliberately out of
+  scope.
 
-Further extension points: issuer *guarantor* look-through, option delta
-weighting, benchmark-relative (active) limits, and scheduled runs that persist
-each night's report as the next day's baseline.
+Further extension points: option delta weighting, benchmark-relative (active)
+limits, and scheduled runs that persist each night's report as the next day's
+baseline.
 
 ## License
 

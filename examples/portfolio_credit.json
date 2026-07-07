@@ -1,0 +1,16 @@
+{
+  "name": "Corporate Credit Mandate - Account 30015",
+  "base_currency": "USD",
+  "as_of": "2026-07-07",
+  "positions": [
+    {"security_id": "912828A26", "issuer": "US Treasury", "sector": "Government", "market_value": 30000000, "rating_sp": "AA+", "rating_moody": "Aaa", "duration": 5.0},
+    {"security_id": "037833EK8", "issuer": "Apple", "sector": "Technology", "market_value": 10000000, "rating_sp": "AA+", "rating_moody": "Aa1", "duration": 6.0},
+    {"security_id": "68389XBK0", "issuer": "Oracle", "sector": "Technology", "market_value": 10000000, "rating_sp": "BBB", "rating_moody": "Baa3", "duration": 7.0},
+    {"security_id": "097023CY9", "issuer": "Boeing", "sector": "Industrials", "market_value": 10000000, "rating_sp": "BBB-", "rating_moody": "Ba1", "duration": 7.0},
+    {"security_id": "345397C60", "issuer": "Ford Motor Credit", "sector": "Consumer Cyclical", "market_value": 8000000, "rating_sp": "BB+", "rating_moody": "Ba2", "duration": 3.0},
+    {"security_id": "674599CL9", "issuer": "Occidental Petroleum", "sector": "Energy", "market_value": 7000000, "rating_sp": "BB+", "rating_moody": "Baa3", "duration": 4.0},
+    {"security_id": "SANCT0001", "issuer": "Sanctioned Bank PLC", "sector": "Financials", "market_value": 5000000, "rating_sp": "A", "rating_moody": "A2", "duration": 5.0},
+    {"security_id": "46625HRL6", "issuer": "JPMorgan Chase", "sector": "Financials", "market_value": 10000000, "rating_sp": "A-", "rating_moody": "A3", "duration": 5.0},
+    {"security_id": "26442CAK9", "issuer": "Duke Energy", "sector": "Utilities", "market_value": 10000000, "rating_sp": "BBB+", "rating_moody": "Baa1", "duration": 8.0}
+  ]
+}

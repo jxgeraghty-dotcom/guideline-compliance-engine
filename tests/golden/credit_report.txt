@@ -1,0 +1,25 @@
+==============================================================================
+  GUIDELINE COMPLIANCE REPORT
+==============================================================================
+  Portfolio : Corporate Credit Mandate - Account 30015
+  Market val: USD 100,000,000   (9 positions)
+  As of     : 2026-07-07
+  Generated : 2026-07-07T00:00:00+00:00
+  STATUS    : NON-COMPLIANT
+  Summary   : 1 breach(es), 0 warning(s), 1 acknowledged across 3 rule(s)
+------------------------------------------------------------------------------
+[WAIVED] CREDIT-FLOOR-01
+         Min BBB- using the lower of S&P/Moody's; up to 5% below investment grade.
+         ! [WAIVER] 25.00% below the BBB- floor exceeds the 5.00% allowance (+20.00%): 097023CY9 (Boeing, BB+), 345397C60 (Ford Motor Credit, BB), 674599CL9 (Occidental Petroleum, BB+). [WAIVED: High-yield sleeve overweight from the Q2 downgrade of Boeing; reduction plan approved, approved by R. Patel, CRO, expires 2026-12-31]
+
+[BREACH] RESTRICTED-01
+         No exposure to prohibited / sanctioned names.
+         ! Restricted name 'Sanctioned Bank PLC' held via SANCT0001 (5.00% of the portfolio). [waiver EXPIRED 2026-06-30: Legacy position in orderly wind-down; temporary exception granted]
+
+[ PASS ] DURATION-BAND-01
+         Portfolio effective duration within 3.0-8.0 years.
+         effective duration 5.57 yrs within 3.00-8.00 yrs
+
+==============================================================================
+  RESULT: NON-COMPLIANT
+==============================================================================

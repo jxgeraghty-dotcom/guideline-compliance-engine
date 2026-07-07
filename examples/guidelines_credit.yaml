@@ -1,0 +1,48 @@
+# Credit mandate — exercises the v0.3 governance features:
+#   * multi-agency rating basis (lower-of S&P/Moody's) for the credit floor
+#   * a restricted-name / sanctions screen (names from an external file)
+#   * approved waivers with expiry (one active -> ACKNOWLEDGED, one expired
+#     -> re-breaches)
+#
+# Waiver expiry is evaluated against the portfolio's as-of date
+# (2026-07-07 in examples/portfolio_credit.json). Run:
+#   compliance-check check -p examples/portfolio_credit.json -g examples/guidelines_credit.yaml
+
+portfolio_name: "Corporate Credit Mandate — Account 30015"
+
+guidelines:
+  - id: CREDIT-FLOOR-01
+    type: credit_floor
+    description: "Min BBB- using the lower of S&P/Moody's; up to 5% below investment grade."
+    min_rating: "BBB-"
+    max_below_weight: 0.05
+    rating_basis: lower
+
+  - id: RESTRICTED-01
+    type: restricted_list
+    description: "No exposure to prohibited / sanctioned names."
+    file: restricted_names.txt
+    severity: breach
+
+  - id: DURATION-BAND-01
+    type: duration_band
+    description: "Portfolio effective duration within 3.0-8.0 years."
+    min_duration: 3.0
+    max_duration: 8.0
+    warn_buffer: 0.5
+
+# Approved, documented exceptions. An active waiver downgrades a matching
+# finding to ACKNOWLEDGED; once past its expiry it lapses and the finding
+# re-breaches with its history intact.
+waivers:
+  - rule: CREDIT-FLOOR-01
+    subject: "below BBB-"
+    reason: "High-yield sleeve overweight from the Q2 downgrade of Boeing; reduction plan approved"
+    approved_by: "R. Patel, CRO"
+    expires: "2026-12-31"
+
+  - rule: RESTRICTED-01
+    subject: "Sanctioned Bank PLC"
+    reason: "Legacy position in orderly wind-down; temporary exception granted"
+    approved_by: "Compliance Committee"
+    expires: "2026-06-30"

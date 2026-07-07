@@ -18,6 +18,7 @@ from typing import Any
 from compliance import ratings
 from compliance.models import Portfolio, Severity
 from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.tolerance import at_least, exceeds
 
 _UNRATED_SEVERITY = {
     "breach": Severity.BREACH,
@@ -41,6 +42,8 @@ class CreditFloorRule(Rule):
         look_through (bool, optional): weight below-floor exposure by derivative
             notional (attributed to the reference entity's rating); default
             ``false``.
+        rating_basis (str, optional): how to combine multiple agency ratings —
+            ``lower`` (default), ``higher`` or ``median``.
     """
 
     rule_type = "credit_floor"
@@ -53,9 +56,15 @@ class CreditFloorRule(Rule):
                 f"Rule {self.rule_id!r}: 'min_rating' must be a valid rating, "
                 f"got {config.get('min_rating')!r}."
             )
-        self.max_below_weight = self._get_number("max_below_weight", 0.0)
-        self.warn_at = self._get_number("warn_at", 0.9 * self.max_below_weight)
+        self.max_below_weight = self._number("max_below_weight", 0.0)
+        self.warn_at = self._number("warn_at", 0.9 * self.max_below_weight)
         self.look_through = bool(config.get("look_through", False))
+        self.rating_basis = str(config.get("rating_basis", "lower")).lower()
+        if self.rating_basis not in ratings.RATING_BASES:
+            raise ValueError(
+                f"Rule {self.rule_id!r}: 'rating_basis' must be one of "
+                f"{ratings.RATING_BASES}, got {config.get('rating_basis')!r}."
+            )
         unrated = str(config.get("treat_unrated_as", "warn")).lower()
         if unrated not in _UNRATED_SEVERITY:
             raise ValueError(
@@ -79,7 +88,8 @@ class CreditFloorRule(Rule):
 
         for p in portfolio.positions:
             weight = weight_of(p)
-            below = ratings.is_below_floor(p.rating, self.min_rating)
+            effective = p.effective_rating(self.rating_basis)
+            below = ratings.is_below_floor(effective, self.min_rating)
             if below is None:
                 unrated_weight += weight
                 if self.unrated_severity is not Severity.INFO:
@@ -98,17 +108,17 @@ class CreditFloorRule(Rule):
                     )
             elif below:
                 below_weight += weight
-                below_positions.append(
-                    f"{p.security_id} ({p.issuer}, {ratings.normalize(p.rating)})"
-                )
+                below_positions.append(f"{p.security_id} ({p.issuer}, {effective})")
 
         findings.append(self._bucket_finding(below_weight, below_positions))
 
         avg = ratings.weighted_average_rating(
-            [(p.rating, portfolio.base_value(p)) for p in portfolio.positions]
+            [(p.effective_rating(self.rating_basis), portfolio.base_value(p))
+             for p in portfolio.positions]
         )
         metrics = {
             "floor": self.min_rating,
+            "rating_basis": self.rating_basis,
             "below_floor_weight": below_weight,
             "below_floor_allowance": self.max_below_weight,
             "unrated_weight": unrated_weight,
@@ -123,7 +133,7 @@ class CreditFloorRule(Rule):
     def _bucket_finding(self, below_weight: float, positions: list[str]) -> Finding:
         allowance = self.max_below_weight
         names = ", ".join(positions)
-        if below_weight > allowance:
+        if exceeds(below_weight, allowance):
             if allowance <= 0:
                 message = (
                     f"{_pct(below_weight)} held below the {self.min_rating} floor "
@@ -143,7 +153,7 @@ class CreditFloorRule(Rule):
                 limit=allowance,
                 metric="weight",
             )
-        if allowance > 0 and below_weight >= min(self.warn_at, allowance):
+        if allowance > 0 and at_least(below_weight, min(self.warn_at, allowance)):
             return Finding(
                 subject=f"below {self.min_rating}",
                 message=(

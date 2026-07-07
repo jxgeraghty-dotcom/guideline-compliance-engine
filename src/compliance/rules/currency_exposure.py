@@ -13,6 +13,7 @@ from typing import Any
 
 from compliance.models import Portfolio, Severity
 from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.tolerance import at_least, exceeds
 
 
 @register_rule
@@ -49,7 +50,7 @@ class CurrencyExposureRule(Rule):
                 continue
             foreign_weight += weight
             cap = self.overrides.get(ccy, self.max_per_currency)
-            if weight > cap:
+            if exceeds(weight, cap):
                 findings.append(
                     Finding(
                         subject=ccy,
@@ -63,7 +64,7 @@ class CurrencyExposureRule(Rule):
                         metric="weight",
                     )
                 )
-            elif weight >= self.warn_ratio * cap:
+            elif at_least(weight, self.warn_ratio * cap):
                 findings.append(
                     Finding(
                         subject=ccy,
@@ -95,7 +96,7 @@ class CurrencyExposureRule(Rule):
     def _aggregate_finding(self, foreign_weight: float) -> Finding:
         cap = self.max_aggregate_foreign
         assert cap is not None
-        if foreign_weight > cap:
+        if exceeds(foreign_weight, cap):
             return Finding(
                 subject="foreign currency (aggregate)",
                 message=(
@@ -107,7 +108,7 @@ class CurrencyExposureRule(Rule):
                 limit=cap,
                 metric="weight",
             )
-        if foreign_weight >= self.warn_ratio * cap:
+        if at_least(foreign_weight, self.warn_ratio * cap):
             return Finding(
                 subject="foreign currency (aggregate)",
                 message=(

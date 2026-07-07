@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guideline-compliance-engine"
-version = "0.2.0"
+version = "0.3.0"
 description = "A rules engine that checks a portfolio against IMA-style investment guidelines and produces a severity-tagged compliance report."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,13 +14,16 @@ keywords = ["compliance", "investment-guidelines", "IMA", "portfolio", "GIPS", "
 dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "ruff>=0.3", "mypy>=1.8"]
 
 [project.scripts]
 compliance-check = "compliance.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+compliance = ["py.typed"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -29,3 +32,10 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src"]
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_redundant_casts = true

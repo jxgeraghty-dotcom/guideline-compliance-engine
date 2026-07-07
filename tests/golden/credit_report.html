@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compliance Report — Corporate Credit Mandate - Account 30015</title>
+<style>
+  :root {
+    --pass: #1a7f37; --pass-bg: #e6f4ea;
+    --warn: #9a6700; --warn-bg: #fff4d6;
+    --breach: #cf222e; --breach-bg: #ffe9e9;
+    --ack: #0550ae; --ack-bg: #ddf4ff;
+    --ink: #1f2328; --muted: #656d76; --line: #d0d7de;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); margin: 0; background: #f6f8fa; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .banner { border-radius: 10px; padding: 18px 22px; margin: 18px 0 24px;
+    border: 1px solid var(--line); font-weight: 700; font-size: 18px; }
+  .banner.pass { background: var(--pass-bg); color: var(--pass); }
+  .banner.warn { background: var(--warn-bg); color: var(--warn); }
+  .banner.breach { background: var(--breach-bg); color: var(--breach); }
+  .banner.ack { background: var(--ack-bg); color: var(--ack); }
+  .meta { display: flex; flex-wrap: wrap; gap: 20px 36px; margin-bottom: 18px;
+    font-size: 13px; }
+  .meta div span { display: block; color: var(--muted); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  td { padding: 14px 16px; border-top: 1px solid var(--line); vertical-align: top; }
+  tr:first-child td { border-top: none; }
+  td.sev { width: 90px; }
+  .rid { font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; }
+  .rdesc { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: .03em; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .badge.breach { background: var(--breach-bg); color: var(--breach); }
+  .badge.ack { background: var(--ack-bg); color: var(--ack); }
+  ul.findings { margin: 10px 0 0; padding: 0; list-style: none; }
+  ul.findings li { font-size: 13px; padding: 6px 0 6px 0; display: flex;
+    gap: 8px; align-items: baseline; }
+  p.summary { color: var(--muted); font-size: 12px; margin: 8px 0 0; font-style: italic; }
+  section.changes { margin-top: 28px; }
+  section.changes h2 { font-size: 15px; margin: 0 0 2px; }
+  p.baseline { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+  ul.change-list { list-style: none; margin: 0; padding: 0; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  ul.change-list > li { padding: 12px 16px; border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 13px; }
+  ul.change-list > li:first-child { border-top: none; }
+  .chg-rid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }
+  .chg-sev { color: var(--muted); font-size: 12px; }
+  ul.subjects { flex-basis: 100%; margin: 4px 0 0 4px; padding: 0; list-style: none;
+    font-size: 12px; }
+  ul.subjects li { padding: 2px 0; }
+  .subj-new { color: var(--breach); }
+  .subj-clear { color: var(--pass); }
+  footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Guideline Compliance Report</h1>
+  <div class="banner breach">NON-COMPLIANT</div>
+  <div class="meta">
+    <div><span>Portfolio</span>Corporate Credit Mandate - Account 30015</div>
+    <div><span>Market value</span>USD 100,000,000</div>
+    <div><span>Positions</span>9</div>
+    <div><span>Breaches</span>1</div>
+    <div><span>Warnings</span>0</div>
+    <div><span>Acknowledged</span>1</div>
+    <div><span>Rules</span>3</div>
+    <div><span>As of</span>2026-07-07</div>
+  </div>
+  <table>
+    <tr class='ack'><td class='sev'><span class='badge ack'>WAIVED</span></td><td><div class='rid'>CREDIT-FLOOR-01</div><div class='rdesc'>Min BBB- using the lower of S&amp;P/Moody&#x27;s; up to 5% below investment grade.</div><ul class='findings'><li class="ack"><span class="badge ack">WAIVED</span>25.00% below the BBB- floor exceeds the 5.00% allowance (+20.00%): 097023CY9 (Boeing, BB+), 345397C60 (Ford Motor Credit, BB), 674599CL9 (Occidental Petroleum, BB+). [WAIVED: High-yield sleeve overweight from the Q2 downgrade of Boeing; reduction plan approved, approved by R. Patel, CRO, expires 2026-12-31]</li></ul></td></tr>
+<tr class='breach'><td class='sev'><span class='badge breach'>BREACH</span></td><td><div class='rid'>RESTRICTED-01</div><div class='rdesc'>No exposure to prohibited / sanctioned names.</div><ul class='findings'><li class="breach"><span class="badge breach">BREACH</span>Restricted name &#x27;Sanctioned Bank PLC&#x27; held via SANCT0001 (5.00% of the portfolio). [waiver EXPIRED 2026-06-30: Legacy position in orderly wind-down; temporary exception granted]</li></ul></td></tr>
+<tr class='pass'><td class='sev'><span class='badge pass'>PASS</span></td><td><div class='rid'>DURATION-BAND-01</div><div class='rdesc'>Portfolio effective duration within 3.0-8.0 years.</div><p class='summary'>effective duration 5.57 yrs within 3.00-8.00 yrs</p></td></tr>
+  </table>
+  
+  <footer>Generated 2026-07-07T00:00:00+00:00 · Guideline &amp; Compliance Monitoring Engine</footer>
+</div>
+</body>
+</html>

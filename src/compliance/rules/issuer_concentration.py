@@ -17,9 +17,11 @@ from typing import Any, Callable
 
 from compliance.models import Portfolio, Position, Severity
 from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.tolerance import at_least, exceeds
 
 _LEVELS = {"issuer", "ultimate_parent"}
 _LEVEL_ALIASES = {"parent": "ultimate_parent"}
+_NETTING = {"net", "gross"}
 
 
 @register_rule
@@ -35,6 +37,9 @@ class IssuerConcentrationRule(Rule):
         level (str, optional): ``issuer`` (default) or ``ultimate_parent``.
         look_through (bool, optional): attribute derivative notional to the
             underlying issuer; default ``false``.
+        netting (str, optional): ``net`` (default) lets a short/hedge offset a
+            long in the same name; ``gross`` sums absolute exposures so hedges
+            do not net down concentration. Only affects signed derivatives.
     """
 
     rule_type = "issuer_concentration"
@@ -42,7 +47,7 @@ class IssuerConcentrationRule(Rule):
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
         self.max_weight = self._require_number("max_weight")
-        self.warn_at = self._get_number("warn_at", 0.9 * self.max_weight)
+        self.warn_at = self._number("warn_at", 0.9 * self.max_weight)
         self.overrides: dict[str, float] = dict(config.get("overrides") or {})
         self.exempt_issuers = {str(i) for i in (config.get("exempt_issuers") or [])}
         self.exempt_sectors = {str(s) for s in (config.get("exempt_sectors") or [])}
@@ -55,6 +60,12 @@ class IssuerConcentrationRule(Rule):
                 f"got {config.get('level')!r}."
             )
         self.level = level
+        self.netting = str(config.get("netting", "net")).lower()
+        if self.netting not in _NETTING:
+            raise ValueError(
+                f"Rule {self.rule_id!r}: 'netting' must be one of {sorted(_NETTING)}, "
+                f"got {config.get('netting')!r}."
+            )
 
     def _name_of(self, position: Position) -> str:
         """The concentration subject a position rolls up to."""
@@ -72,11 +83,16 @@ class IssuerConcentrationRule(Rule):
         # Exempt only if *every* constituent holding sits in an exempt sector.
         return all(p.sector in self.exempt_sectors for p in constituents)
 
+    def _value_fn(self, portfolio: Portfolio) -> Callable[[Position], float]:
+        if not self.look_through:
+            return portfolio.base_value
+        if self.netting == "gross":
+            return lambda p: abs(portfolio.base_exposure(p))
+        return portfolio.base_exposure
+
     def evaluate(self, portfolio: Portfolio) -> RuleResult:
         nav = portfolio.nav
-        value_fn: Callable[[Position], float] = (
-            portfolio.base_exposure if self.look_through else portfolio.base_value
-        )
+        value_fn = self._value_fn(portfolio)
         groups = portfolio.positions_by(self._name_of)
 
         findings: list[Finding] = []
@@ -97,7 +113,7 @@ class IssuerConcentrationRule(Rule):
 
             rolls_up = self._rollup_note(name, constituents)
             limit = self.overrides.get(name, self.max_weight)
-            if weight > limit:
+            if exceeds(weight, limit):
                 findings.append(
                     Finding(
                         subject=name,
@@ -111,7 +127,7 @@ class IssuerConcentrationRule(Rule):
                         metric="weight",
                     )
                 )
-            elif weight >= min(self.warn_at, limit):
+            elif at_least(weight, min(self.warn_at, limit)):
                 findings.append(
                     Finding(
                         subject=name,
@@ -129,6 +145,7 @@ class IssuerConcentrationRule(Rule):
         metrics = {
             "level": self.level,
             "look_through": self.look_through,
+            "netting": self.netting,
             "issuer_count": len(weights),
             "largest_issuer": largest_name,
             "largest_issuer_weight": largest_weight,

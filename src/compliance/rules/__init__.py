@@ -10,6 +10,7 @@ from compliance.rules import (
     currency_exposure,
     duration_band,
     issuer_concentration,
+    restricted_list,
     sector_cap,
 )
 from compliance.rules.base import (
@@ -32,5 +33,6 @@ __all__ = [
     "currency_exposure",
     "duration_band",
     "issuer_concentration",
+    "restricted_list",
     "sector_cap",
 ]

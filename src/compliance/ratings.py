@@ -103,6 +103,38 @@ def rating_from_notch(value: float) -> str:
     return SP_SCALE[idx]
 
 
+RATING_BASES = ("lower", "higher", "median")
+
+
+def effective_rating(agency_ratings: list[str], basis: str = "lower") -> str | None:
+    """Combine several agency ratings into the one used for compliance.
+
+    ``basis``:
+        * ``lower``  — the worst rating (highest notch). Conservative and the
+          usual IMA default ("lower of two").
+        * ``higher`` — the best rating (lowest notch).
+        * ``median`` — the median notch. With three ratings this is the middle
+          one; with an even count it takes the worse of the two central
+          notches (so two ratings collapse to the lower — "median of three,
+          lower of two").
+
+    Unrecognised/unrated entries are ignored. Returns ``None`` if nothing in the
+    list carries a usable rating.
+    """
+    if basis not in RATING_BASES:
+        raise ValueError(f"rating basis must be one of {RATING_BASES}, got {basis!r}.")
+    notches = sorted(n for n in (notch(r) for r in agency_ratings) if n is not None)
+    if not notches:
+        return None
+    if basis == "lower":
+        chosen = notches[-1]
+    elif basis == "higher":
+        chosen = notches[0]
+    else:  # median (worse-of-two-central for even counts)
+        chosen = notches[len(notches) // 2]
+    return SP_SCALE[chosen - 1]
+
+
 def weighted_average_rating(
     pairs: list[tuple[str | None, float]],
 ) -> tuple[str, float] | None:

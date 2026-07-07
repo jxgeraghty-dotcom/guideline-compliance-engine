@@ -17,7 +17,8 @@ from typing import TYPE_CHECKING, Any, TextIO
 from compliance.models import Severity
 from compliance.rules.base import RuleResult
 
-if TYPE_CHECKING:  # avoid a circular import; compare.py imports this module.
+if TYPE_CHECKING:  # avoid circular imports; these modules import this one.
+    from compliance.batch import BatchResult
     from compliance.compare import ReportComparison
 
 
@@ -48,6 +49,7 @@ class ComplianceReport:
         return {
             Severity.PASS: "COMPLIANT",
             Severity.INFO: "COMPLIANT",
+            Severity.ACKNOWLEDGED: "COMPLIANT (WITH EXCEPTIONS)",
             Severity.WARN: "COMPLIANT (WITH WARNINGS)",
             Severity.BREACH: "NON-COMPLIANT",
         }[self.overall_severity]
@@ -68,6 +70,10 @@ class ComplianceReport:
         """Count of WARN findings across all rules (not rules)."""
         return self.counts()[Severity.WARN.name]
 
+    def acknowledged_count(self) -> int:
+        """Count of ACKNOWLEDGED (waived) findings across all rules."""
+        return self.counts()[Severity.ACKNOWLEDGED.name]
+
     def breached_rule_count(self) -> int:
         return sum(1 for r in self.results if r.severity == Severity.BREACH)
 
@@ -87,6 +93,7 @@ class ComplianceReport:
                 "rules_breached": self.breached_rule_count(),
                 "breaches": self.breach_count(),
                 "warnings": self.warn_count(),
+                "acknowledged": self.acknowledged_count(),
                 "finding_counts": self.counts(),
             },
             "results": [r.to_dict() for r in self.results],
@@ -98,10 +105,11 @@ class ComplianceReport:
 # --------------------------------------------------------------------------- #
 
 _ANSI = {
-    Severity.PASS: "\033[32m",   # green
-    Severity.INFO: "\033[36m",   # cyan
-    Severity.WARN: "\033[33m",   # yellow
-    Severity.BREACH: "\033[31m",  # red
+    Severity.PASS: "\033[32m",          # green
+    Severity.INFO: "\033[36m",          # cyan
+    Severity.ACKNOWLEDGED: "\033[34m",  # blue
+    Severity.WARN: "\033[33m",          # yellow
+    Severity.BREACH: "\033[31m",        # red
 }
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
@@ -110,8 +118,18 @@ _RESET = "\033[0m"
 _BADGE = {
     Severity.PASS: "PASS",
     Severity.INFO: "INFO",
+    Severity.ACKNOWLEDGED: "WAIVED",
     Severity.WARN: "WARN",
     Severity.BREACH: "BREACH",
+}
+
+# CSS class per severity, shared by the HTML renderer.
+_CSS_CLASS = {
+    Severity.PASS: "pass",
+    Severity.INFO: "pass",
+    Severity.ACKNOWLEDGED: "ack",
+    Severity.WARN: "warn",
+    Severity.BREACH: "breach",
 }
 
 # Comparison transitions -> (ASCII glyph, colour severity, css class).
@@ -174,9 +192,11 @@ def render_text(
     overall = report.overall_severity
     status_line = f"  STATUS    : {report.status_label}"
     lines.append(paint(status_line, _BOLD + _ANSI[overall]))
+    ack = report.acknowledged_count()
+    ack_note = f", {ack} acknowledged" if ack else ""
     lines.append(
         f"  Summary   : {report.breach_count()} breach(es), "
-        f"{report.warn_count()} warning(s) across {len(report.results)} rule(s)"
+        f"{report.warn_count()} warning(s){ack_note} across {len(report.results)} rule(s)"
     )
     lines.append("-" * width)
 
@@ -275,12 +295,7 @@ def render_html(
     comparison: "ReportComparison | None" = None,
 ) -> str:
     """Render a standalone, styled HTML report."""
-    css_class = {
-        Severity.PASS: "pass",
-        Severity.INFO: "pass",
-        Severity.WARN: "warn",
-        Severity.BREACH: "breach",
-    }
+    css_class = _CSS_CLASS
     overall_cls = css_class[report.overall_severity]
 
     rows: list[str] = []
@@ -318,6 +333,7 @@ def render_html(
         positions=report.position_count,
         breaches=report.breach_count(),
         warnings=report.warn_count(),
+        acknowledged=report.acknowledged_count(),
         rules=len(report.results),
         generated=escape(report.generated_at),
         as_of=as_of,
@@ -373,6 +389,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     --pass: #1a7f37; --pass-bg: #e6f4ea;
     --warn: #9a6700; --warn-bg: #fff4d6;
     --breach: #cf222e; --breach-bg: #ffe9e9;
+    --ack: #0550ae; --ack-bg: #ddf4ff;
     --ink: #1f2328; --muted: #656d76; --line: #d0d7de;
   }}
   * {{ box-sizing: border-box; }}
@@ -385,6 +402,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   .banner.pass {{ background: var(--pass-bg); color: var(--pass); }}
   .banner.warn {{ background: var(--warn-bg); color: var(--warn); }}
   .banner.breach {{ background: var(--breach-bg); color: var(--breach); }}
+  .banner.ack {{ background: var(--ack-bg); color: var(--ack); }}
   .meta {{ display: flex; flex-wrap: wrap; gap: 20px 36px; margin-bottom: 18px;
     font-size: 13px; }}
   .meta div span {{ display: block; color: var(--muted); font-size: 11px;
@@ -402,6 +420,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   .badge.pass {{ background: var(--pass-bg); color: var(--pass); }}
   .badge.warn {{ background: var(--warn-bg); color: var(--warn); }}
   .badge.breach {{ background: var(--breach-bg); color: var(--breach); }}
+  .badge.ack {{ background: var(--ack-bg); color: var(--ack); }}
   ul.findings {{ margin: 10px 0 0; padding: 0; list-style: none; }}
   ul.findings li {{ font-size: 13px; padding: 6px 0 6px 0; display: flex;
     gap: 8px; align-items: baseline; }}
@@ -434,6 +453,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     <div><span>Positions</span>{positions}</div>
     <div><span>Breaches</span>{breaches}</div>
     <div><span>Warnings</span>{warnings}</div>
+    <div><span>Acknowledged</span>{acknowledged}</div>
     <div><span>Rules</span>{rules}</div>
     {as_of}
   </div>
@@ -452,4 +472,142 @@ RENDERERS = {
     "text": render_text,
     "json": render_json,
     "html": render_html,
+}
+
+
+# --------------------------------------------------------------------------- #
+# Batch rendering
+# --------------------------------------------------------------------------- #
+
+def _truncate(text: str, width: int) -> str:
+    return text if len(text) <= width else text[: width - 3] + "..."
+
+
+def render_batch_text(
+    batch: "BatchResult",
+    *,
+    color: bool | None = None,
+    stream: TextIO | None = None,
+) -> str:
+    """Render a one-row-per-account batch summary table."""
+    stream = stream or sys.stdout
+    use_color = _use_color(stream, color)
+
+    def paint(text: str, code: str) -> str:
+        return f"{code}{text}{_RESET}" if use_color else text
+
+    width = 90
+    lines = ["=" * width, paint("  BATCH COMPLIANCE SUMMARY", _BOLD), "=" * width]
+    lines.append(f"  Generated : {batch.generated_at}")
+    lines.append(
+        f"  Accounts  : {len(batch.results)}   "
+        f"Non-compliant: {batch.non_compliant_count()}   Errors: {batch.error_count()}"
+    )
+    lines.append("-" * width)
+    lines.append(
+        paint(f"  {'ACCOUNT':<34}{'STATUS':<30}{'BR':>4}{'WN':>4}{'ACK':>6}", _BOLD)
+    )
+    for r in batch.results:
+        name = _truncate(r.name, 32)
+        if r.report is None:
+            status = _truncate("ERROR: " + (r.error or ""), 28)
+            row = f"  {name:<34}{status:<30}{'-':>4}{'-':>4}{'-':>6}"
+        else:
+            rep = r.report
+            row = (
+                f"  {name:<34}{_truncate(rep.status_label, 28):<30}"
+                f"{rep.breach_count():>4}{rep.warn_count():>4}{rep.acknowledged_count():>6}"
+            )
+        lines.append(paint(row, _ANSI[r.severity]))
+    lines.append("=" * width)
+    verdict = "ALL COMPLIANT" if batch.worst_severity() < Severity.BREACH else "ACTION REQUIRED"
+    lines.append(paint(f"  RESULT: {verdict}", _BOLD + _ANSI[batch.worst_severity()]))
+    lines.append("=" * width)
+    return "\n".join(lines)
+
+
+def render_batch_json(batch: "BatchResult", *, indent: int = 2) -> str:
+    return json.dumps(batch.to_dict(), indent=indent)
+
+
+def render_batch_html(batch: "BatchResult") -> str:
+    """Render a compact standalone batch dashboard."""
+    rows = []
+    for r in batch.results:
+        if r.report is None:
+            rows.append(
+                f"<tr class='breach'><td>{escape(r.name)}</td>"
+                f"<td><span class='badge breach'>ERROR</span></td>"
+                f"<td colspan='3' class='err'>{escape(r.error or '')}</td></tr>"
+            )
+            continue
+        rep = r.report
+        cls = _CSS_CLASS[rep.overall_severity]
+        rows.append(
+            f"<tr class='{cls}'><td>{escape(r.name)}</td>"
+            f"<td><span class='badge {cls}'>{escape(rep.status_label)}</span></td>"
+            f"<td class='num'>{rep.breach_count()}</td>"
+            f"<td class='num'>{rep.warn_count()}</td>"
+            f"<td class='num'>{rep.acknowledged_count()}</td></tr>"
+        )
+    return _BATCH_TEMPLATE.format(
+        generated=escape(batch.generated_at),
+        accounts=len(batch.results),
+        non_compliant=batch.non_compliant_count(),
+        errors=batch.error_count(),
+        rows="\n".join(rows),
+    )
+
+
+_BATCH_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batch Compliance Summary</title>
+<style>
+  :root {{
+    --pass: #1a7f37; --pass-bg: #e6f4ea; --warn: #9a6700; --warn-bg: #fff4d6;
+    --breach: #cf222e; --breach-bg: #ffe9e9; --ack: #0550ae; --ack-bg: #ddf4ff;
+    --ink: #1f2328; --muted: #656d76; --line: #d0d7de;
+  }}
+  body {{ font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink); margin: 0; background: #f6f8fa; }}
+  .wrap {{ max-width: 820px; margin: 0 auto; padding: 32px 20px 64px; }}
+  h1 {{ font-size: 20px; margin: 0 0 6px; }}
+  .meta {{ color: var(--muted); font-size: 13px; margin-bottom: 18px; }}
+  table {{ width: 100%; border-collapse: collapse; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }}
+  th, td {{ padding: 12px 14px; border-top: 1px solid var(--line); text-align: left;
+    font-size: 13px; }}
+  th {{ background: #f6f8fa; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--muted); }}
+  td.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+  td.err {{ color: var(--breach); }}
+  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; }}
+  .badge.pass {{ background: var(--pass-bg); color: var(--pass); }}
+  .badge.warn {{ background: var(--warn-bg); color: var(--warn); }}
+  .badge.breach {{ background: var(--breach-bg); color: var(--breach); }}
+  .badge.ack {{ background: var(--ack-bg); color: var(--ack); }}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Batch Compliance Summary</h1>
+  <div class="meta">{accounts} accounts · {non_compliant} non-compliant · {errors} errors
+    · generated {generated}</div>
+  <table>
+    <tr><th>Account</th><th>Status</th><th>Breaches</th><th>Warnings</th><th>Acknowledged</th></tr>
+    {rows}
+  </table>
+</div>
+</body>
+</html>
+"""
+
+BATCH_RENDERERS = {
+    "text": render_batch_text,
+    "json": render_batch_json,
+    "html": render_batch_html,
 }

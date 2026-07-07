@@ -125,6 +125,11 @@ class Rule(ABC):
             )
         return value
 
+    def _number(self, key: str, default: float) -> float:
+        """Fetch a numeric config value with a concrete (non-None) default."""
+        value = self._get_number(key, default)
+        return default if value is None else value
+
     def _new_result(self, findings: list[Finding], metrics: dict[str, Any]) -> RuleResult:
         return RuleResult(
             rule_id=self.rule_id,

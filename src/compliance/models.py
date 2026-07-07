@@ -33,12 +33,17 @@ class Severity(IntEnum):
     Ordering matters: ``max()`` over a set of severities yields the most
     serious one, which is how a rule rolls its findings up into a single
     verdict and how the report rolls rules up into an overall status.
+
+    ``ACKNOWLEDGED`` sits below ``WARN``: it is a breach (or warning) that is
+    covered by an approved, unexpired waiver, so it should not trip the breach
+    gate, yet it stays visible and distinct from a clean pass.
     """
 
-    PASS = 0      # within guideline limits
-    INFO = 1      # informational metric, no action required
-    WARN = 2      # inside limits but approaching them, or a data-quality gap
-    BREACH = 3    # guideline limit exceeded
+    PASS = 0          # within guideline limits
+    INFO = 1          # informational metric, no action required
+    ACKNOWLEDGED = 2  # would breach, but covered by an approved waiver
+    WARN = 3          # inside limits but approaching them, or a data-quality gap
+    BREACH = 4        # guideline limit exceeded
 
     @property
     def label(self) -> str:
@@ -77,6 +82,9 @@ class Position:
     notional: float | None = None
     underlying_issuer: str | None = None
     underlying_sector: str | None = None
+    rating_sp: str | None = None
+    rating_moody: str | None = None
+    rating_fitch: str | None = None
 
     def __post_init__(self) -> None:
         # Cash instruments are long-only in this model; derivatives may carry a
@@ -105,6 +113,34 @@ class Position:
     def risk_sector(self) -> str:
         """Sector that bears the economic risk (underlying for an overlay)."""
         return self.underlying_sector or self.sector
+
+    def agency_ratings(self) -> list[str]:
+        """Ratings available for this holding, one per agency.
+
+        Prefers the explicit per-agency fields; falls back to the single
+        ``rating`` field so existing single-rating data keeps working.
+        """
+        pool = [r for r in (self.rating_sp, self.rating_moody, self.rating_fitch) if r]
+        if pool:
+            return pool
+        return [self.rating] if self.rating else []
+
+    def effective_rating(self, basis: str = "lower") -> str | None:
+        """The rating used for compliance, combining agencies per ``basis``.
+
+        ``basis`` is ``lower`` (worst — conservative, the usual IMA default),
+        ``higher`` (best) or ``median`` (median-of-three / lower-of-two).
+        """
+        from compliance import ratings  # local import keeps the model leaf-light
+
+        return ratings.effective_rating(self.agency_ratings(), basis)
+
+    def screening_names(self) -> list[str]:
+        """Names to screen against a restricted list: issuer, parent, underlying."""
+        names = [self.issuer, self.parent]
+        if self.underlying_issuer:
+            names.append(self.underlying_issuer)
+        return names
 
     def local_exposure(self) -> float:
         """Economic exposure in the position's own currency.

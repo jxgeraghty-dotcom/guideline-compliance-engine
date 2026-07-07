@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from compliance.models import Portfolio, Position
 
@@ -39,6 +39,15 @@ _CSV_ALIASES = {
     "assetclass": "asset_class",
     "rating": "rating",
     "credit_rating": "rating",
+    "rating_sp": "rating_sp",
+    "sp": "rating_sp",
+    "s&p": "rating_sp",
+    "rating_moody": "rating_moody",
+    "rating_moodys": "rating_moody",
+    "moody": "rating_moody",
+    "moodys": "rating_moody",
+    "rating_fitch": "rating_fitch",
+    "fitch": "rating_fitch",
     "duration": "duration",
     "effective_duration": "duration",
     "currency": "currency",
@@ -119,7 +128,7 @@ def _load_portfolio_csv(path: Path) -> Portfolio:
     return Portfolio(name=path.stem, positions=positions)
 
 
-def _map_headers(fieldnames: list[str], path: Path) -> dict[str, str]:
+def _map_headers(fieldnames: Sequence[str], path: Path) -> dict[str, str]:
     field_map: dict[str, str] = {}
     for header in fieldnames:
         key = header.strip().lower().replace(" ", "_")
@@ -161,12 +170,14 @@ def _load_portfolio_json(path: Path) -> Portfolio:
 
 
 def _build_position(record: dict[str, Any], where: str) -> Position:
-    def _str(key: str, default: str | None = None) -> str | None:
-        value = record.get(key, default)
+    def _opt(key: str) -> str | None:
+        value = record.get(key)
         if value is None:
-            return default
-        value = str(value).strip()
-        return value or default
+            return None
+        return str(value).strip() or None
+
+    def _req(key: str, default: str) -> str:
+        return _opt(key) or default
 
     try:
         market_value = float(record["market_value"])
@@ -175,7 +186,7 @@ def _build_position(record: dict[str, Any], where: str) -> Position:
 
     def _float(key: str) -> float | None:
         value = record.get(key)
-        if value in ("", None):
+        if value is None or value == "":
             return None
         try:
             return float(value)
@@ -185,8 +196,8 @@ def _build_position(record: dict[str, Any], where: str) -> Position:
     duration_val = _float("duration")
     notional_val = _float("notional")
 
-    security_id = _str("security_id")
-    issuer = _str("issuer")
+    security_id = _opt("security_id")
+    issuer = _opt("issuer")
     if not security_id or not issuer:
         raise LoaderError(f"{where}: security_id and issuer are required.")
 
@@ -195,16 +206,19 @@ def _build_position(record: dict[str, Any], where: str) -> Position:
             security_id=security_id,
             issuer=issuer,
             market_value=market_value,
-            sector=_str("sector", "Unclassified"),
-            asset_class=_str("asset_class", "Fixed Income"),
-            rating=_str("rating"),
+            sector=_req("sector", "Unclassified"),
+            asset_class=_req("asset_class", "Fixed Income"),
+            rating=_opt("rating"),
             duration=duration_val,
-            currency=_str("currency", "USD"),
-            ultimate_parent=_str("ultimate_parent"),
-            instrument_type=_str("instrument_type", "bond"),
+            currency=_req("currency", "USD"),
+            ultimate_parent=_opt("ultimate_parent"),
+            instrument_type=_req("instrument_type", "bond"),
             notional=notional_val,
-            underlying_issuer=_str("underlying_issuer"),
-            underlying_sector=_str("underlying_sector"),
+            underlying_issuer=_opt("underlying_issuer"),
+            underlying_sector=_opt("underlying_sector"),
+            rating_sp=_opt("rating_sp"),
+            rating_moody=_opt("rating_moody"),
+            rating_fitch=_opt("rating_fitch"),
         )
     except ValueError as exc:
         raise LoaderError(f"{where}: {exc}") from exc
@@ -245,3 +259,83 @@ def _parse_yaml(text: str, path: Path) -> Any:
         return yaml.safe_load(text)
     except yaml.YAMLError as exc:
         raise LoaderError(f"Guidelines YAML {path} is invalid: {exc}") from exc
+
+
+def load_report_json(path: str | Path) -> dict[str, Any]:
+    """Load a prior report JSON (as produced by ``-f json``) for comparison."""
+    path = Path(path)
+    if not path.exists():
+        raise LoaderError(f"Baseline report not found: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise LoaderError(f"Baseline report {path} is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict) or "results" not in data:
+        raise LoaderError(
+            f"Baseline report {path} does not look like a report JSON (missing "
+            f"'results'). Generate one with '-f json -o baseline.json'."
+        )
+    return data
+
+
+def load_name_list(path: str | Path) -> list[str]:
+    """Read a restricted/name list: one name per line; ``#`` comments and blanks
+    are ignored."""
+    path = Path(path)
+    if not path.exists():
+        raise LoaderError(f"Name list file not found: {path}")
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            names.append(stripped)
+    return names
+
+
+def resolve_restricted_lists(guidelines: dict[str, Any], base_dir: Path) -> None:
+    """Inline any restricted_list ``file`` (relative to ``base_dir``) into ``names``.
+
+    Called by the CLI so a guideline document can reference an external name list
+    by a path relative to itself, while the rule stays free of I/O.
+    """
+    for entry in guidelines.get("guidelines", []):
+        if not isinstance(entry, dict) or entry.get("type") != "restricted_list":
+            continue
+        file = entry.get("file")
+        if not file:
+            continue
+        resolved = Path(file)
+        if not resolved.is_absolute():
+            resolved = base_dir / resolved
+        names = list(entry.get("names") or [])
+        names.extend(load_name_list(resolved))
+        entry["names"] = names
+        entry["file"] = None
+
+
+def load_manifest(path: str | Path) -> dict[str, Any]:
+    """Load a batch manifest (``.yaml``/``.yml`` or ``.json``).
+
+    A manifest is a mapping with an ``accounts`` list; each account has a
+    ``portfolio`` and ``guidelines`` path (and optional ``name``/``baseline``),
+    resolved by the batch runner relative to the manifest file.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise LoaderError(f"Manifest file not found: {path}")
+    suffix = path.suffix.lower()
+    text = path.read_text(encoding="utf-8")
+    if suffix in (".yaml", ".yml"):
+        data = _parse_yaml(text, path)
+    elif suffix == ".json":
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise LoaderError(f"Manifest JSON {path} is invalid: {exc}") from exc
+    else:
+        raise LoaderError(
+            f"Unsupported manifest format {suffix!r}; expected .yaml, .yml or .json."
+        )
+    if not isinstance(data, dict) or not isinstance(data.get("accounts"), list):
+        raise LoaderError(f"Manifest {path} must contain an 'accounts' list.")
+    return data

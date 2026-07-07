@@ -1,0 +1,16 @@
+# Batch manifest — a book of accounts, each with its own mandate.
+# Paths are resolved relative to this file. Run:
+#   compliance-check check-batch -m examples/accounts.yaml
+
+accounts:
+  - name: "IG Aggregate - Acct 10042"
+    portfolio: portfolio.csv
+    guidelines: guidelines.yaml
+
+  - name: "Global Multi-Asset - Acct 20871"
+    portfolio: portfolio_multi.csv
+    guidelines: guidelines_multi.yaml
+
+  - name: "Corporate Credit - Acct 30015"
+    portfolio: portfolio_credit.json
+    guidelines: guidelines_credit.yaml

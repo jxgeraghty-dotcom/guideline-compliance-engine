@@ -12,6 +12,7 @@ from typing import Any
 
 from compliance.models import Portfolio, Severity
 from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.tolerance import below, exceeds
 
 
 @register_rule
@@ -71,7 +72,7 @@ class DurationBandRule(Rule):
             )
 
         band = f"{self.min_duration:.2f}-{self.max_duration:.2f} yrs"
-        if duration < self.min_duration or duration > self.max_duration:
+        if below(duration, self.min_duration) or exceeds(duration, self.max_duration):
             side = "below" if duration < self.min_duration else "above"
             edge = self.min_duration if side == "below" else self.max_duration
             findings.append(

@@ -13,6 +13,9 @@ from typing import Any, Callable
 
 from compliance.models import Portfolio, Position, Severity
 from compliance.rules.base import Finding, Rule, RuleResult, register_rule
+from compliance.tolerance import at_least, below, exceeds
+
+_NETTING = {"net", "gross"}
 
 
 @register_rule
@@ -27,6 +30,8 @@ class SectorCapRule(Rule):
             the cap; default ``0.9``.
         look_through (bool, optional): attribute derivative notional to the
             underlying sector; default ``false``.
+        netting (str, optional): ``net`` (default) or ``gross``; see the issuer
+            rule. Only affects signed derivatives under look-through.
     """
 
     rule_type = "sector_cap"
@@ -38,20 +43,30 @@ class SectorCapRule(Rule):
         self.floors: dict[str, float] = dict(config.get("floors") or {})
         self.warn_ratio = self._get_number("warn_ratio", 0.9) or 0.9
         self.look_through = bool(config.get("look_through", False))
+        self.netting = str(config.get("netting", "net")).lower()
+        if self.netting not in _NETTING:
+            raise ValueError(
+                f"Rule {self.rule_id!r}: 'netting' must be one of {sorted(_NETTING)}, "
+                f"got {config.get('netting')!r}."
+            )
 
     def evaluate(self, portfolio: Portfolio) -> RuleResult:
         key: Callable[[Position], str] = (
             (lambda p: p.risk_sector) if self.look_through else (lambda p: p.sector)
         )
-        value: Callable[[Position], float] | None = (
-            portfolio.base_exposure if self.look_through else None
-        )
+        value: Callable[[Position], float] | None
+        if not self.look_through:
+            value = None
+        elif self.netting == "gross":
+            value = lambda p: abs(portfolio.base_exposure(p))  # noqa: E731
+        else:
+            value = portfolio.base_exposure
         weights = portfolio.aggregate_weight(key, value)
         findings: list[Finding] = []
 
         for sector, weight in sorted(weights.items(), key=lambda kv: kv[1], reverse=True):
             cap = self.overrides.get(sector, self.max_weight)
-            if weight > cap:
+            if exceeds(weight, cap):
                 findings.append(
                     Finding(
                         subject=sector,
@@ -65,7 +80,7 @@ class SectorCapRule(Rule):
                         metric="weight",
                     )
                 )
-            elif weight >= self.warn_ratio * cap:
+            elif at_least(weight, self.warn_ratio * cap):
                 findings.append(
                     Finding(
                         subject=sector,
@@ -83,7 +98,7 @@ class SectorCapRule(Rule):
         # Per-sector minimum weights (mandate floors).
         for sector, floor in self.floors.items():
             weight = weights.get(sector, 0.0)
-            if weight < floor:
+            if below(weight, floor):
                 findings.append(
                     Finding(
                         subject=sector,
@@ -102,6 +117,7 @@ class SectorCapRule(Rule):
             "sector_count": len(weights),
             "default_cap": self.max_weight,
             "look_through": self.look_through,
+            "netting": self.netting,
             "sector_weights": dict(
                 sorted(weights.items(), key=lambda kv: kv[1], reverse=True)
             ),

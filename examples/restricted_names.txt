@@ -1,0 +1,8 @@
+# Prohibited / restricted names — one issuer per line.
+# Blank lines and lines starting with '#' are ignored.
+# Names are matched (case-insensitively) against issuer, ultimate parent and
+# derivative reference entity.
+
+Sanctioned Bank PLC
+Prohibited Holdings Ltd
+Rite Aid
