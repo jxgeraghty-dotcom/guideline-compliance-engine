@@ -5,7 +5,7 @@ catalogue, see [README.md](README.md); for the version history, see
 [CHANGELOG.md](CHANGELOG.md).
 
 Repo: https://github.com/jxgeraghty-dotcom/guideline-compliance-engine
-(public · default branch `main`) · Version `0.3.0`
+(public · default branch `main`) · Version `0.4.0` (tagged `v0.4.0`)
 
 ## Goal
 
@@ -84,9 +84,6 @@ defined so far.
 - **`median` rating basis for even counts** is defined as the worse of the two
   central notches ("median of three, lower of two"); reasonable, but worth
   confirming against a specific mandate's wording.
-- **No release tag yet.** Version is `0.3.0` in metadata but the repo is not
-  git-tagged; CI has not yet been observed running green on GitHub (first run
-  pending).
 - **Top-level *manifest* is strict but its per-account schema is intentionally
   captured per-account** (a malformed account errors that account, not the
   batch). Confirm that resilience model is desired.

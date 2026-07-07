@@ -15,7 +15,7 @@ from compliance.waivers import Waiver
 
 # Single source of truth for the version; pyproject.toml reads it at build
 # time via [tool.setuptools.dynamic].
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "AccountResult",
