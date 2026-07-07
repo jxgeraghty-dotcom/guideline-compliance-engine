@@ -1,5 +1,10 @@
 # Guideline & Compliance Monitoring Engine
 
+[![CI](https://github.com/jxgeraghty-dotcom/guideline-compliance-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/jxgeraghty-dotcom/guideline-compliance-engine/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jxgeraghty-dotcom/guideline-compliance-engine)](https://github.com/jxgeraghty-dotcom/guideline-compliance-engine/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 A small, dependency-light rules engine that checks an investment portfolio
 against **IMA-style investment guidelines** and produces a **severity-tagged
 compliance report**. It models the kind of pre-trade / post-trade guideline

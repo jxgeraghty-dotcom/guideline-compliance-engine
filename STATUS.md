@@ -5,7 +5,8 @@ catalogue, see [README.md](README.md); for the version history, see
 [CHANGELOG.md](CHANGELOG.md).
 
 Repo: https://github.com/jxgeraghty-dotcom/guideline-compliance-engine
-(public · default branch `main`) · Version `0.4.0` (tagged `v0.4.0`)
+(public · default branch `main`) · Version `0.4.0` ·
+[release v0.4.0](https://github.com/jxgeraghty-dotcom/guideline-compliance-engine/releases/tag/v0.4.0)
 
 ## Goal
 
