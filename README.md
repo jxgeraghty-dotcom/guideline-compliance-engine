@@ -330,6 +330,10 @@ Design choices worth calling out:
 - **The engine degrades gracefully.** A rule that raises is captured as an
   error-category breach rather than aborting the run — a monitoring engine
   should always produce a report and tell you what it could not evaluate.
+- **Config is validated strictly.** Each rule and waiver declares its allowed
+  keys; an unknown key is rejected with a "did you mean …?" suggestion rather
+  than ignored. For a control that fails safe on absence, a silently-mistyped
+  key (`look_throuh`, `expiry`) is a false negative, so the tool fails loud.
 
 ### Adding a new rule
 
@@ -364,7 +368,7 @@ then just works.
 
 ```bash
 python -m pip install -e ".[dev]"
-pytest            # 103 tests
+pytest            # 112 tests
 ruff check src tests
 mypy src          # clean; the package ships a py.typed marker
 ```
@@ -372,9 +376,9 @@ mypy src          # clean; the package ships a py.typed marker
 The suite covers the rating scale and multi-agency basis, every rule (breach /
 warn / exemption / boundary / data edge cases), FX conversion, ultimate-parent
 aggregation, look-through and netting, waivers (active / expired / stale),
-restricted-list screening, batch mode, baseline comparison, all renderers, and
-the CLI's exit-code behaviour — plus golden-file snapshots of the text/HTML
-output. `pytest` puts `src/` on the path, so it runs without an install.
+restricted-list screening, batch mode, baseline comparison, strict config-key
+validation, all renderers, and the CLI's exit-code behaviour — plus golden-file
+snapshots of the text/HTML output. `pytest` puts `src/` on the path, so it runs without an install.
 [CI](.github/workflows/ci.yml) runs lint, types and tests on Python 3.10–3.12
 and asserts the exit-code gate blocks a breach.
 

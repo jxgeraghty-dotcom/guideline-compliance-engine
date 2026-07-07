@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from compliance.models import Portfolio, Severity
+from compliance.validation import reject_unknown_keys
 
 
 @dataclass
@@ -97,10 +98,28 @@ class Rule(ABC):
     #: The ``type`` string that selects this rule in a guideline config.
     rule_type: str = ""
 
+    #: Rule-specific config keys, in addition to the common ones below.
+    #: Subclasses declare this so unknown keys can be rejected loudly.
+    config_keys: frozenset[str] = frozenset()
+
+    #: Keys every rule accepts.
+    _COMMON_KEYS = frozenset({"id", "type", "description"})
+
     def __init__(self, config: dict[str, Any]):
+        self._reject_unknown_keys(config)
         self.config = config
         self.rule_id: str = str(config.get("id") or self._default_id())
         self.description: str = str(config.get("description") or self.rule_id)
+
+    @classmethod
+    def allowed_config_keys(cls) -> frozenset[str]:
+        return cls._COMMON_KEYS | cls.config_keys
+
+    def _reject_unknown_keys(self, config: dict[str, Any]) -> None:
+        label = config.get("id") or self.rule_type or type(self).__name__
+        reject_unknown_keys(
+            f"Rule {str(label)!r} ({self.rule_type})", config, self.allowed_config_keys()
+        )
 
     def _default_id(self) -> str:
         return self.rule_type.upper().replace("_", "-")

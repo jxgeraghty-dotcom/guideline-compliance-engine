@@ -35,6 +35,7 @@ class RestrictedListRule(Rule):
     """
 
     rule_type = "restricted_list"
+    config_keys = frozenset({"names", "file", "severity"})
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)

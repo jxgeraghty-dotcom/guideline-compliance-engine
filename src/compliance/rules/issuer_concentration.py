@@ -43,6 +43,10 @@ class IssuerConcentrationRule(Rule):
     """
 
     rule_type = "issuer_concentration"
+    config_keys = frozenset(
+        {"max_weight", "warn_at", "overrides", "exempt_issuers", "exempt_sectors",
+         "level", "look_through", "netting"}
+    )
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)

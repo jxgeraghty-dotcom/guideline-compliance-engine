@@ -29,6 +29,9 @@ class CurrencyExposureRule(Rule):
     """
 
     rule_type = "currency_exposure"
+    config_keys = frozenset(
+        {"max_per_currency", "overrides", "max_aggregate_foreign", "warn_ratio"}
+    )
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)

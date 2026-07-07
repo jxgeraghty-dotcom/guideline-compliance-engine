@@ -20,6 +20,9 @@ from typing import Any
 
 from compliance.models import Severity
 from compliance.rules.base import Finding, RuleResult
+from compliance.validation import reject_unknown_keys
+
+_WAIVER_KEYS = frozenset({"rule", "subject", "reason", "approved_by", "expires"})
 
 
 def _norm(text: str) -> str:
@@ -36,6 +39,9 @@ class Waiver:
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "Waiver":
+        reject_unknown_keys(
+            f"Waiver for {config.get('rule')!r}", config, _WAIVER_KEYS
+        )
         if not config.get("rule"):
             raise ValueError(f"Waiver is missing a 'rule' id: {config!r}")
         if not config.get("reason"):

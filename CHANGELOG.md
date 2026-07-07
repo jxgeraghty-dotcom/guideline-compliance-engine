@@ -22,6 +22,10 @@ All notable changes to this project are documented here. The format follows
   account failing to load.
 - **Netting switch** (`net` / `gross`) on the issuer and sector rules, making
   hedge offsetting explicit for signed-derivative look-through.
+- **Strict config-key validation.** Every rule (and every waiver) declares its
+  allowed keys; an unrecognised key raises with a "did you mean …?" suggestion
+  instead of being silently ignored — so a typo like `look_throuh` or `expiry`
+  can no longer quietly disable a control.
 - Engineering: `py.typed` marker, a mypy pass (clean), a GitHub Actions CI
   workflow that also demonstrates the exit-code gate, and golden-file snapshot
   tests for the text/HTML renderers.

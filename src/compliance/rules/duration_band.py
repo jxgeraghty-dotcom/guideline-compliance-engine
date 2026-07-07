@@ -30,6 +30,7 @@ class DurationBandRule(Rule):
     """
 
     rule_type = "duration_band"
+    config_keys = frozenset({"min_duration", "max_duration", "warn_buffer", "look_through"})
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)

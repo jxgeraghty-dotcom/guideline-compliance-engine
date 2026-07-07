@@ -35,6 +35,9 @@ class SectorCapRule(Rule):
     """
 
     rule_type = "sector_cap"
+    config_keys = frozenset(
+        {"max_weight", "overrides", "floors", "warn_ratio", "look_through", "netting"}
+    )
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)

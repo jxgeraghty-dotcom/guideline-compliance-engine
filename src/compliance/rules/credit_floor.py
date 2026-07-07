@@ -47,6 +47,10 @@ class CreditFloorRule(Rule):
     """
 
     rule_type = "credit_floor"
+    config_keys = frozenset(
+        {"min_rating", "max_below_weight", "warn_at", "treat_unrated_as",
+         "look_through", "rating_basis"}
+    )
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
